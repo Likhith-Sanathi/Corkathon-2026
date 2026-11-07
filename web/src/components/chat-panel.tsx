@@ -6,7 +6,7 @@ import Markdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import type { ScoreResult } from "@/lib/types"
+import type { ScoreResult, Weights } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 type SiteContext = Pick<ScoreResult, "municipality" | "province" | "lat" | "lon" | "score" | "factors" | "risks">
@@ -15,7 +15,9 @@ type Place = { lat: number; lon: number; displayName: string }
 
 type Message = { role: "user" | "assistant"; content: string; sources?: string[]; place?: Place; error?: boolean }
 
-const STARTER = "Ask how the score, weights, or land prices are calculated — or ask about a place, e.g. \"what about Eindhoven?\""
+const STARTER =
+  'Ask how the score, weights, or land prices are calculated, ask about a place (e.g. "what about Eindhoven?"), ' +
+  'or ask for the best option (e.g. "best plot near Groningen under €1M").'
 
 // Keeps the LLM's markdown legible inside a small chat bubble: no big headings, tight list spacing.
 const MARKDOWN_COMPONENTS: Components = {
@@ -43,7 +45,15 @@ const MARKDOWN_COMPONENTS: Components = {
 }
 
 /** Chat content only — no floating button or positioning, so it can be dropped into any panel. */
-export function ChatPanel({ site, onPlace }: { site?: ScoreResult | null; onPlace?: (lat: number, lon: number) => void }) {
+export function ChatPanel({
+  site,
+  weights,
+  onPlace,
+}: {
+  site?: ScoreResult | null
+  weights?: Weights
+  onPlace?: (lat: number, lon: number) => void
+}) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
@@ -72,6 +82,7 @@ export function ChatPanel({ site, onPlace }: { site?: ScoreResult | null; onPlac
           message: text,
           history: next.slice(-6).map((m) => ({ role: m.role, content: m.content })),
           site: siteContext,
+          weights,
         }),
       })
       const body = await res.json()
@@ -145,7 +156,15 @@ export function ChatPanel({ site, onPlace }: { site?: ScoreResult | null; onPlac
 }
 
 /** Standalone floating button + popover wrapping ChatPanel, for pages with no other panel to dock into. */
-export function FloatingChat({ site, onPlace }: { site?: ScoreResult | null; onPlace?: (lat: number, lon: number) => void }) {
+export function FloatingChat({
+  site,
+  weights,
+  onPlace,
+}: {
+  site?: ScoreResult | null
+  weights?: Weights
+  onPlace?: (lat: number, lon: number) => void
+}) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -158,7 +177,7 @@ export function FloatingChat({ site, onPlace }: { site?: ScoreResult | null; onP
               <X />
             </Button>
           </div>
-          <ChatPanel site={site} onPlace={onPlace} />
+          <ChatPanel site={site} weights={weights} onPlace={onPlace} />
         </div>
       )}
 

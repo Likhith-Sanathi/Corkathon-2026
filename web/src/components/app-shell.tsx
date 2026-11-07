@@ -280,7 +280,7 @@ export function AppShell() {
                 <FeaturedListings weights={weights} selectedId={shown?.plot?.listing?.id ?? null} onSelect={onPick} />
               </div>
               <div className={cn("min-h-0 flex-1", rightTab !== "chat" && "hidden")}>
-                <ChatPanel site={shown} onPlace={onPick} />
+                <ChatPanel site={shown} weights={weights} onPlace={onPick} />
               </div>
             </div>
           </motion.aside>
