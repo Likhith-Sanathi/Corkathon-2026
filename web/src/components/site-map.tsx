@@ -4,6 +4,7 @@ import "leaflet/dist/leaflet.css"
 import L from "leaflet"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
+  Circle,
   GeoJSON,
   MapContainer,
   Marker,
@@ -484,10 +485,23 @@ export type SiteMapProps = {
   pin: { lat: number; lon: number } | null
   result: ScoreResult | null
   searchSites: ScoreResult[]
+  searchArea: { lat: number; lon: number; radiusKm: number } | null
   onPick: (lat: number, lon: number) => void
 }
 
-export default function SiteMap({ theme, weights, onHeatDomain, layers, filters, basemap, pin, result, searchSites, onPick }: SiteMapProps) {
+export default function SiteMap({
+  theme,
+  weights,
+  onHeatDomain,
+  layers,
+  filters,
+  basemap,
+  pin,
+  result,
+  searchSites,
+  searchArea,
+  onPick,
+}: SiteMapProps) {
   const substations = useLayer<Substation[]>("substations", layers.substations)
   const lines = useLayer<PowerLine[]>("lines", layers.hv)
   const towers = useLayer<Tower[]>("towers", layers.hv)
@@ -747,6 +761,15 @@ export default function SiteMap({ theme, weights, onHeatDomain, layers, filters,
           />
         ))}
       {pin && <Marker position={[pin.lat, pin.lon]} icon={pinIcon} />}
+
+      {searchArea && (
+        <Circle
+          center={[searchArea.lat, searchArea.lon]}
+          radius={searchArea.radiusKm * 1000}
+          interactive={false}
+          pathOptions={{ color: LISTING_COLORS.for_sale, weight: 2, dashArray: "6 6", fill: true, fillColor: "#ffffff", fillOpacity: 0.08 }}
+        />
+      )}
 
       {searchSites.map((s, i) => (
         <Marker

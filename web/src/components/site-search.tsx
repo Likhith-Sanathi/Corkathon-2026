@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Loader2, Search, SearchX, Trophy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,9 +11,9 @@ import type { FactorKey, ScoreResult, Weights } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 const RADIUS_ITEMS = [
-  { value: "15", label: "± 15 km" },
+  { value: "10", label: "± 10 km" },
+  { value: "20", label: "± 20 km" },
   { value: "30", label: "± 30 km" },
-  { value: "60", label: "± 60 km" },
 ]
 
 const PRICE_ITEMS = [
@@ -46,7 +46,7 @@ type RankResponse = {
 type Status =
   | { state: "idle" }
   | { state: "loading"; query: string }
-  | { state: "error"; message: string }
+  | { state: "error"; message: string; suggestion?: string | null }
   | { state: "success"; result: RankResponse }
 
 const TONE: Record<string, string> = {
@@ -60,38 +60,64 @@ export function SiteSearch({
   weights,
   onSelect,
   onResults,
+  onSearchArea,
 }: {
   weights: Weights
   onSelect: (lat: number, lon: number) => void
   onResults?: (sites: ScoreResult[]) => void
+  onSearchArea?: (area: { lat: number; lon: number; radiusKm: number } | null) => void
 }) {
   const [query, setQuery] = useState("")
   const [radiusKm, setRadiusKm] = useState("30")
   const [maxPrice, setMaxPrice] = useState("0")
+  // The query actually being searched for — separate from the input's `query` so that changing
+  // the radius/price dropdowns re-runs the search for it without needing to hit Search again.
+  const [submittedQuery, setSubmittedQuery] = useState<string | null>(null)
   const [status, setStatus] = useState<Status>({ state: "idle" })
 
-  async function runSearch(e: React.FormEvent) {
+  useEffect(() => {
+    if (!submittedQuery) return
+    const ctrl = new AbortController()
+    const t = setTimeout(async () => {
+      setStatus({ state: "loading", query: submittedQuery })
+      try {
+        const res = await fetch("/api/rank-sites", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: submittedQuery, weights, radiusKm: Number(radiusKm), maxPrice: Number(maxPrice) || undefined }),
+          signal: ctrl.signal,
+        })
+        const body = await res.json()
+        if (!res.ok) {
+          setStatus({ state: "error", message: body.error ?? "Search failed.", suggestion: body.suggestion })
+          return
+        }
+        const result = body as RankResponse
+        setStatus({ state: "success", result })
+        onResults?.(result.sites)
+        onSearchArea?.({ lat: result.resolved.lat, lon: result.resolved.lon, radiusKm: result.radiusKm })
+      } catch (e) {
+        if ((e as Error).name !== "AbortError") {
+          console.error("Plot search failed:", e)
+          setStatus({ state: "error", message: "Could not reach the scoring service." })
+        }
+      }
+    }, 250)
+    return () => {
+      clearTimeout(t)
+      ctrl.abort()
+    }
+  }, [submittedQuery, radiusKm, maxPrice, weights, onResults, onSearchArea])
+
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const trimmed = query.trim()
-    if (!trimmed) return
-    setStatus({ state: "loading", query: trimmed })
-    try {
-      const res = await fetch("/api/rank-sites", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: trimmed, weights, radiusKm: Number(radiusKm), maxPrice: Number(maxPrice) || undefined }),
-      })
-      const body = await res.json()
-      if (!res.ok) {
-        setStatus({ state: "error", message: body.error ?? "Search failed." })
-        return
-      }
-      const result = body as RankResponse
-      setStatus({ state: "success", result })
-      onResults?.(result.sites)
-    } catch {
-      setStatus({ state: "error", message: "Could not reach the scoring service." })
-    }
+    if (trimmed) setSubmittedQuery(trimmed)
+  }
+
+  function applySuggestion(name: string) {
+    setQuery(name)
+    setSubmittedQuery(name)
   }
 
   const isLoading = status.state === "loading"
@@ -103,7 +129,7 @@ export function SiteSearch({
         <span className="text-[10px] text-muted-foreground">synthetic demo listings</span>
       </div>
 
-      <form onSubmit={runSearch} className="space-y-2">
+      <form onSubmit={handleSubmit} className="space-y-2">
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -147,9 +173,20 @@ export function SiteSearch({
       </form>
 
       {status.state === "error" && (
-        <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-          <SearchX className="size-3.5 shrink-0" />
-          {status.message}
+        <div className="space-y-1.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          <div className="flex items-center gap-2">
+            <SearchX className="size-3.5 shrink-0" />
+            {status.message}
+          </div>
+          {status.suggestion && (
+            <button
+              type="button"
+              onClick={() => applySuggestion(status.suggestion!)}
+              className="pl-5.5 text-left underline underline-offset-2 hover:text-foreground"
+            >
+              Did you mean <span className="font-medium">{status.suggestion}</span>?
+            </button>
+          )}
         </div>
       )}
 

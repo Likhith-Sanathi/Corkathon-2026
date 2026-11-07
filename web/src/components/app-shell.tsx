@@ -53,6 +53,7 @@ export function AppShell() {
   const [basemapChoice, setBasemapChoice] = useState<Basemap | null>(null)
   const [result, setResult] = useState<ScoreResult | null>(null)
   const [searchSites, setSearchSites] = useState<ScoreResult[]>([])
+  const [searchArea, setSearchArea] = useState<{ lat: number; lon: number; radiusKm: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [heatDomain, setHeatDomain] = useState<[number, number] | null>(null)
@@ -94,7 +95,10 @@ export function AppShell() {
           setResult(body as ScoreResult)
         }
       } catch (e) {
-        if ((e as Error).name !== "AbortError") setError("Could not reach the scoring service.")
+        if ((e as Error).name !== "AbortError") {
+          console.error("Site scoring failed:", e)
+          setError("Could not reach the scoring service.")
+        }
       } finally {
         if (!ctrl.signal.aborted) setLoading(false)
       }
@@ -155,7 +159,7 @@ export function AppShell() {
                   </p>
                 </header>
 
-                <SiteSearch weights={weights} onSelect={onPick} onResults={setSearchSites} />
+                <SiteSearch weights={weights} onSelect={onPick} onResults={setSearchSites} onSearchArea={setSearchArea} />
                 <Separator />
 
                 {error && <OutsideNotice message={error} />}
@@ -196,6 +200,7 @@ export function AppShell() {
           pin={pin}
           result={shown}
           searchSites={searchSites}
+          searchArea={searchArea}
           onPick={onPick}
         />
         {layers.heatmap && heatDomain && (
