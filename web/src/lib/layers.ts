@@ -98,7 +98,7 @@ export const LAYERS: LayerDef[] = [
     hint: "flood.csv",
     color: "#3b82f6",
     files: ["flood"],
-    defaultOn: true,
+    defaultOn: false,
     legend: [
       { color: "#3b82f6", label: "Unprotected" },
       { color: "#7dd3fc", label: "Protected" },
@@ -112,14 +112,14 @@ export const LAYERS: LayerDef[] = [
     hint: "IBIS 2019 · zoom in",
     color: PARK_AVAILABLE,
     files: ["ibis"],
-    defaultOn: false,
+    defaultOn: true,
     legend: [
       { color: PARK_AVAILABLE, label: "Land available" },
       { color: PARK_FULL, label: "Fully taken" },
     ],
   },
-  { key: "parcels", label: "Cadastral parcels", hint: "Kadaster · zoom in", color: "#a3a3a3", files: [], defaultOn: false },
-  { key: "municipalities", label: "Municipal borders", hint: "PDOK", color: "#94a3b8", files: ["municipalities"], defaultOn: false },
+  { key: "parcels", label: "Cadastral parcels", hint: "Kadaster · zoom in", color: "#a3a3a3", files: [], defaultOn: true },
+  { key: "municipalities", label: "Municipal borders", hint: "PDOK", color: "#94a3b8", files: ["municipalities"], defaultOn: true },
 ]
 
 export const FACTOR_COLORS: Record<FactorKey, string> = {
