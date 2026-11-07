@@ -1,6 +1,7 @@
 import { DEFAULT_WEIGHTS, scoreLocation } from "@/lib/scoring"
 import { loadDataset } from "@/lib/server-data"
-import { fetchParcel, findBusinessPark, nearestBusinessPark } from "@/lib/plot"
+import { fetchParcel, findBusinessPark, findListing, nearestBusinessPark } from "@/lib/plot"
+import { estimatePrice } from "@/lib/pricing"
 import type { PlotInfo, Weights } from "@/lib/types"
 
 type Body = { lat?: unknown; lon?: unknown; weights?: Partial<Record<keyof Weights, unknown>> }
@@ -33,11 +34,20 @@ export async function POST(request: Request) {
 
   // The plot: business park from IBIS (local data) and the cadastral parcel (live from PDOK).
   const businessPark = findBusinessPark(data, lat, lon)
-  const plot: PlotInfo = { parcel: null, businessPark, nearestPark: businessPark ? null : nearestBusinessPark(data, lat, lon) }
+  const plot: PlotInfo = {
+    parcel: null,
+    businessPark,
+    nearestPark: businessPark ? null : nearestBusinessPark(data, lat, lon),
+    listing: findListing(data, lat, lon),
+  }
   try {
     plot.parcel = await fetchParcel(lat, lon)
   } catch (e) {
     plot.parcelError = e instanceof Error && e.name === "TimeoutError" ? "Parcel service timed out" : "Parcel service unavailable"
+  }
+  // Demo: a simulated value for any parcel that is not one of the synthetic listings.
+  if (plot.parcel && !plot.listing) {
+    plot.estimate = estimatePrice(data, lat, lon, { areaM2: plot.parcel.areaM2, seed: plot.parcel.id, park: businessPark })
   }
   return Response.json({ ...result, plot })
 }

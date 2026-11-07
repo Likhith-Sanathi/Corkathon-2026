@@ -49,12 +49,43 @@ export type Parcel = {
   geometry: { type: "MultiPolygon"; coordinates: Ring[][] }
 }
 
+/**
+ * A plot for sale. SYNTHETIC demo data: the parcel shapes are real (Kadaster) and sit inside
+ * business parks that reported available land (IBIS), but the listing details and prices are simulated.
+ */
+export type ListingProps = {
+  id: string // Kadaster parcel ID
+  parkId: string
+  parkName: string
+  municipality: string
+  areaM2: number
+  status: "for_sale" | "under_offer"
+  seller: "municipality" | "private"
+  listedOn: string // YYYY-MM-DD
+  perM2: number // asking price, € per m²
+  total: number // asking price, €
+  lat: number // a point inside the plot
+  lon: number
+  synthetic: true
+}
+export type Listing = {
+  type: "Feature"
+  properties: ListingProps
+  geometry: { type: "MultiPolygon"; coordinates: Ring[][] }
+}
+
+export type PriceEstimate = import("./pricing").PriceEstimate
+
 export type PlotInfo = {
   parcel: Parcel | null
   parcelError?: string
   businessPark: BusinessParkProps | null
   /** Closest business park edge when the point is not inside one (within 15 km). */
   nearestPark?: { park: BusinessParkProps; km: number } | null
+  /** Synthetic listing under the point, if any (demo data). */
+  listing?: ListingProps | null
+  /** Simulated value of the parcel under the point (demo), when it is not a listing. */
+  estimate?: PriceEstimate | null
 }
 
 export type Dataset = {
@@ -69,6 +100,7 @@ export type Dataset = {
   flood: FeatureCollection<FloodZone>
   municipalities: FeatureCollection<Municipality>
   ibis?: FeatureCollection<BusinessPark>
+  plots?: FeatureCollection<Listing>
 }
 
 export type FactorKey = "power" | "isolation" | "telecom" | "water" | "roads"

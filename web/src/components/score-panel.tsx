@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react"
 import { Building2, LandPlot, MapPin, ShieldAlert, Waves, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { FACTOR_COLORS } from "@/lib/layers"
+import { FACTOR_COLORS, LISTING_COLORS, LISTING_LABELS } from "@/lib/layers"
 import { FACTOR_LABELS, grade } from "@/lib/scoring"
 import type { PlotInfo, ScoreResult } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -186,6 +186,18 @@ export function ScorePanel({
 }
 
 const fmtKm = (km: number) => (km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`)
+const fmtEur = (v: number) =>
+  v >= 1e6 ? `€${(v / 1e6).toLocaleString("en-GB", { maximumFractionDigits: 2 })}M` : `€${Math.round(v).toLocaleString("en-GB")}`
+const fmtPerM2 = (v: number) => `€${v.toLocaleString("en-GB", { maximumFractionDigits: 1 })}/m²`
+
+function DemoBadge() {
+  return (
+    <span className="rounded border border-dashed px-1.5 py-px text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+      Simulated
+    </span>
+  )
+}
+
 const fmtArea = (m2: number) =>
   m2 >= 10_000 ? `${(m2 / 10_000).toLocaleString("en-GB", { maximumFractionDigits: 2 })} ha` : `${m2.toLocaleString("en-GB")} m²`
 
@@ -194,6 +206,60 @@ function PlotSection({ plot }: { plot: PlotInfo }) {
   return (
     <div className="space-y-3">
       <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Plot</h3>
+      {plot.listing && (
+        <div className="space-y-2 rounded-lg border-2 p-3" style={{ borderColor: LISTING_COLORS[plot.listing.status] }}>
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2 text-sm font-medium">
+              <span className="size-2.5 rounded-full" style={{ background: LISTING_COLORS[plot.listing.status] }} />
+              {LISTING_LABELS[plot.listing.status]}
+            </span>
+            <DemoBadge />
+          </div>
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-2xl font-semibold tracking-tight tabular-nums">{fmtEur(plot.listing.total)}</span>
+            <span className="text-sm text-muted-foreground tabular-nums">{fmtPerM2(plot.listing.perM2)}</span>
+          </div>
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
+            <dt className="text-muted-foreground">Plot size</dt>
+            <dd className="text-right tabular-nums">{fmtArea(plot.listing.areaM2)}</dd>
+            <dt className="text-muted-foreground">Seller</dt>
+            <dd className="text-right">{plot.listing.seller === "municipality" ? "Municipality" : "Private"}</dd>
+            <dt className="text-muted-foreground">Listed</dt>
+            <dd className="text-right tabular-nums">{plot.listing.listedOn}</dd>
+            <dt className="text-muted-foreground">Business park</dt>
+            <dd className="truncate text-right">{plot.listing.parkName}</dd>
+          </dl>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Demo listing: real Kadaster parcel ({plot.listing.id}) in a park with available land; status and price are simulated
+            from IBIS 2019 park prices.
+          </p>
+        </div>
+      )}
+      {!plot.listing && plot.estimate && (
+        <div className="space-y-2 rounded-lg border p-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-medium">Estimated land value</span>
+            <DemoBadge />
+          </div>
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-xl font-semibold tracking-tight tabular-nums">
+              {plot.estimate.total !== null ? fmtEur(plot.estimate.total) : fmtPerM2(plot.estimate.perM2)}
+            </span>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {fmtPerM2(plot.estimate.low)} – {fmtPerM2(plot.estimate.high)}
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {plot.estimate.zoning === "industrial" ? "Industrial land" : "Not zoned for industry"} ·{" "}
+            {fmtPerM2(plot.estimate.perM2)}
+          </p>
+          <ul className="space-y-0.5 text-[11px] leading-relaxed text-muted-foreground">
+            {plot.estimate.basis.map((b) => (
+              <li key={b}>{b}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="flex gap-3 rounded-lg border p-3">
         <LandPlot className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1 space-y-0.5">

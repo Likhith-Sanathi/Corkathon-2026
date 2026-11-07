@@ -10,6 +10,8 @@ import {
   FLOOD_COLORS,
   FLOOD_FALLBACK,
   HEAT_RAMP,
+  LISTING_COLORS,
+  LISTING_LABELS,
   PARK_AVAILABLE,
   PARK_FULL,
   PLACE_RANK,
@@ -25,6 +27,8 @@ import { normaliseWeights } from "@/lib/scoring"
 import type { Theme } from "@/lib/theme"
 import type {
   BusinessPark,
+  Listing,
+  ListingProps,
   FeatureCollection,
   FloodZone,
   Junction,
@@ -96,12 +100,14 @@ function PointLayer<T extends Pt>({
   styleFor,
   tooltipFor,
   maxZoom,
+  onClick,
 }: {
   items: T[] | null
   styleFor: (item: T) => PointStyle
   tooltipFor?: (item: T) => string | null
   /** Hide the layer when zoomed in past this level. */
   maxZoom?: number
+  onClick?: (item: T) => void
 }) {
   const map = useMap()
   useEffect(() => {
@@ -113,10 +119,11 @@ function PointLayer<T extends Pt>({
       const style = styleFor(it)
       if (!style) continue
       const base = style.radius ?? 4
-      const opts = { renderer, ...style, radius: base * zoomScale(map.getZoom()) }
+      const opts = { renderer, ...style, radius: base * zoomScale(map.getZoom()), bubblingMouseEvents: !onClick }
       const marker = style.sprite ? new GlyphMarker([it.lat, it.lon], opts) : L.circleMarker([it.lat, it.lon], opts)
       const tip = tooltipFor?.(it)
       if (tip) marker.bindTooltip(tip, { direction: "top", offset: [0, -4] })
+      if (onClick) marker.on("click", () => onClick(it))
       group.addLayer(marker)
       sized.push([marker, base])
     }
@@ -134,7 +141,7 @@ function PointLayer<T extends Pt>({
       map.off("zoomend", sync)
       group.remove()
     }
-  }, [map, items, styleFor, tooltipFor, maxZoom])
+  }, [map, items, styleFor, tooltipFor, maxZoom, onClick])
   return null
 }
 
@@ -417,6 +424,7 @@ export default function SiteMap({ theme, weights, onHeatDomain, layers, filters,
   const flood = useLayer<FeatureCollection<FloodZone>>("flood", layers.flood)
   const municipalities = useLayer<FeatureCollection<Municipality>>("municipalities", layers.municipalities)
   const parks = useLayer<FeatureCollection<BusinessPark>>("ibis", layers.parks)
+  const listings = useLayer<FeatureCollection<Listing>>("plots", layers.plots)
 
   // Glyph sprites for the current theme (outline and shadow differ per theme).
   const [spriteSet, setSpriteSet] = useState<{ theme: Theme; sprites: Sprites } | null>(null)
@@ -538,6 +546,35 @@ export default function SiteMap({ theme, weights, onHeatDomain, layers, filters,
     lines.push(`<span style="opacity:.7">IBIS ${p.year}</span>`)
     layer.bindTooltip(lines.join("<br/>"), { sticky: true })
   }, [])
+  // Plots for sale (synthetic demo data): clicking one drops the pin on it and scores it.
+  const listingTip = useCallback((p: ListingProps) => {
+    const size = p.areaM2 >= 10_000 ? `${(p.areaM2 / 10_000).toFixed(1)} ha` : `${p.areaM2.toLocaleString("en-GB")} m²`
+    return [
+      `<b>${LISTING_LABELS[p.status]}</b> · ${size}`,
+      `<b>€${p.perM2}/m²</b> · €${(p.total / 1e6).toFixed(2)}M`,
+      esc(`${p.parkName}, ${p.municipality}`),
+      `<span style="opacity:.7">Synthetic demo listing · click to score</span>`,
+    ].join("<br/>")
+  }, [])
+  const listingStyle = useCallback((f?: GeoJSON.Feature) => {
+    const c = LISTING_COLORS[(f?.properties as ListingProps | undefined)?.status ?? "for_sale"]
+    return { color: c, weight: 2, opacity: 1, fillColor: c, fillOpacity: 0.35 }
+  }, [])
+  const listingEach = useCallback(
+    (f: GeoJSON.Feature, layer: L.Layer) => {
+      const p = f.properties as ListingProps
+      layer.bindTooltip(listingTip(p), { sticky: true })
+      layer.on("click", () => onPick(p.lat, p.lon))
+    },
+    [listingTip, onPick],
+  )
+  const listingMarkers = useMemo(() => listings?.features.map((f) => f.properties) ?? null, [listings])
+  const listingMarkerStyle = useCallback(
+    (p: ListingProps): PointStyle => ({ radius: 4, color: LISTING_COLORS[p.status], weight: 1.5, fillColor: LISTING_COLORS[p.status], fillOpacity: 0.55 }),
+    [],
+  )
+  const pickListing = useCallback((p: ListingProps) => onPick(p.lat, p.lon), [onPick])
+
   const parcel = pin && result?.plot?.parcel ? result.plot.parcel : null
   const parcelRings = useMemo(
     () => parcel?.geometry.coordinates.map((poly) => poly.map((ring) => ring.map(([x, y]) => [y, x] as [number, number]))) ?? null,
@@ -578,6 +615,15 @@ export default function SiteMap({ theme, weights, onHeatDomain, layers, filters,
       {parks && (
         <GeoJSON data={parks as unknown as GeoJSON.FeatureCollection} style={parkStyle} onEachFeature={parkEach} />
       )}
+      {listings && (
+        <GeoJSON
+          data={listings as unknown as GeoJSON.FeatureCollection}
+          style={listingStyle}
+          onEachFeature={listingEach}
+          bubblingMouseEvents={false}
+        />
+      )}
+      <PointLayer items={listingMarkers} styleFor={listingMarkerStyle} tooltipFor={listingTip} onClick={pickListing} maxZoom={11} />
       {layers.parcels && (
         <Pane name="parcels" style={{ zIndex: 345 }}>
           <WMSTileLayer

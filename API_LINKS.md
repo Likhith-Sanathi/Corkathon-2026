@@ -49,6 +49,9 @@ Every source below is free. None needs an API key or an account. The app only ke
 - PDOK BRT Achtergrondkaart: `https://service.pdok.nl/brt/achtergrondkaart/wmts/v2_0/standaard/EPSG:3857/{z}/{x}/{y}.png`
 - OpenStreetMap: `https://tile.openstreetmap.org/{z}/{x}/{y}.png`
 
+## Synthetic data (demo only)
+- **Plots for sale and their prices** (`web/public/data/plots.json`, the "Plots for sale" layer, and the "Estimated land value" card) are **simulated**. The parcel shapes are real Kadaster parcels and the price levels are anchored on IBIS 2019 park prices, but which plots are for sale, their asking prices, sellers and dates are generated. See "Plots for sale" in `web/README.md`.
+
 ## Tried and not in use
 - **Ember monthly electricity generation:** country-level only. Removed from the repo.
 - **Digital Decade broadband coverage:** country-level only. Removed.

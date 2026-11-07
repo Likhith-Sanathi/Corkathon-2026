@@ -1,11 +1,20 @@
 import { haversineKm, inPolygon } from "./geo"
-import type { BusinessPark, BusinessParkProps, Dataset, Parcel, Ring } from "./types"
+import type { BusinessPark, BusinessParkProps, Dataset, Listing, ListingProps, Parcel, Ring } from "./types"
 
 /** The IBIS business park containing the point, if any. */
 export function findBusinessPark(data: Dataset, lat: number, lon: number): BusinessParkProps | null {
   for (const park of data.ibis?.features ?? []) {
     if (!inBbox(park, lat, lon)) continue
     if (park.geometry.coordinates.some((poly) => inPolygon(lon, lat, poly))) return park.properties
+  }
+  return null
+}
+
+/** The synthetic listing (plot for sale) containing the point, if any. */
+export function findListing(data: Dataset, lat: number, lon: number): ListingProps | null {
+  for (const plot of data.plots?.features ?? []) {
+    if (!inBbox(plot, lat, lon)) continue
+    if (plot.geometry.coordinates.some((poly) => inPolygon(lon, lat, poly))) return plot.properties
   }
   return null
 }
@@ -26,8 +35,9 @@ export function nearestBusinessPark(data: Dataset, lat: number, lon: number, max
   return best
 }
 
-const bboxCache = new WeakMap<BusinessPark, [number, number, number, number]>()
-function inBbox(park: BusinessPark, lat: number, lon: number, padLat = 0, padLon = 0) {
+type Shape = BusinessPark | Listing
+const bboxCache = new WeakMap<Shape, [number, number, number, number]>()
+function inBbox(park: Shape, lat: number, lon: number, padLat = 0, padLon = 0) {
   let b = bboxCache.get(park)
   if (!b) {
     b = [Infinity, Infinity, -Infinity, -Infinity]

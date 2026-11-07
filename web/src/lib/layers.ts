@@ -3,6 +3,7 @@ import type { FactorKey } from "./types"
 
 export type LayerKey =
   | "heatmap"
+  | "plots"
   | "flood"
   | "substations"
   | "hv"
@@ -28,6 +29,8 @@ export type LayerDef = {
   legend?: { label: string; glyph?: GlyphKind; color?: string }[]
 }
 
+export const LISTING_COLORS: Record<"for_sale" | "under_offer", string> = { for_sale: "#06b6d4", under_offer: "#a855f7" }
+export const LISTING_LABELS: Record<"for_sale" | "under_offer", string> = { for_sale: "For sale", under_offer: "Under offer" }
 export const PARK_AVAILABLE = "#ec4899"
 export const PARK_FULL = "#94a3b8"
 export const POWER_380 = "#dc2626"
@@ -46,6 +49,18 @@ export const LAYERS: LayerDef[] = [
     color: "#21918c",
     files: ["grid"],
     defaultOn: true,
+  },
+  {
+    key: "plots",
+    label: "Plots for sale",
+    hint: "synthetic demo",
+    color: LISTING_COLORS.for_sale,
+    files: ["plots"],
+    defaultOn: true,
+    legend: [
+      { color: LISTING_COLORS.for_sale, label: LISTING_LABELS.for_sale },
+      { color: LISTING_COLORS.under_offer, label: LISTING_LABELS.under_offer },
+    ],
   },
   {
     key: "substations",

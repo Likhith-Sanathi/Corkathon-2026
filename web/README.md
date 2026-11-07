@@ -28,6 +28,17 @@ Dropping a pin also returns the **plot** (`plot` in the `/api/score` response):
 
 The map has a **Business parks** layer (pink where land is still available) and a **Cadastral parcels** overlay (PDOK WMS, from zoom 15).
 
+## Plots for sale (synthetic demo data)
+
+There is no open data on which Dutch plots are for sale or what they cost, so for the demo `npm run build:plots` (`scripts/build-plots.ts`, ~30 s first run, then cached) generates **5,686 synthetic listings**:
+
+- Only business parks that IBIS reports as having land available get listings, up to roughly that park's available hectares.
+- Every listing is a real Kadaster parcel inside the park (fetched from PDOK and cached in `scripts/.cache/parcels/`).
+- Asking prices come from `src/lib/pricing.ts`: the park's own IBIS 2019 price (implausible entries dropped), or an inverse-distance-weighted average of nearby parks, indexed ×1.32 to 2026, with a plot-size discount and a stable ±7% per-parcel variation.
+- Status (for sale or under offer), seller and listing date are seeded from the parcel ID, so rebuilds give the same listings.
+
+Any other parcel you pin gets an **estimated land value** from the same model: industrial pricing inside business parks, farmland pricing (≈€75k/ha, scaled by regional price level) outside them. Everything simulated is marked **Simulated** in the panel.
+
 ## How it works
 
 - `POST /api/score` with `{ lat, lon, weights? }` returns the score, every sub-score, and the evidence. Points outside the Netherlands get a `422`.
