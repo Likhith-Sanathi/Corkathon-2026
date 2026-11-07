@@ -15,6 +15,10 @@ export async function GET(request: NextRequest) {
   url.searchParams.set("limit", "1");
   url.searchParams.set("countrycodes", "");
   url.searchParams.set("addressdetails", "1");
+  // Without this, Nominatim returns the country name in its local language
+  // (e.g. "Nederland", "Deutschland") — the Ember power-mix lookup and the
+  // Netherlands-local-data check both key off the English name.
+  url.searchParams.set("accept-language", "en");
 
   const response = await fetch(url, {
     headers: {

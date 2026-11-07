@@ -44,3 +44,7 @@ next-env.d.ts
 # compacted JSON in src/lib/scoring/localdata/ is committed
 *.osm.pbf
 /data/
+
+# python
+__pycache__/
+*.pyc

@@ -45,14 +45,17 @@ export function ExploreSidebar() {
       <div className="flex gap-2.5 rounded-lg border bg-muted/40 px-4 py-3 text-xs text-muted-foreground">
         <Info className="size-3.5 shrink-0 translate-y-0.5" />
         <p>
-          The overall score is an unweighted average of the five factors
-          above. Isolation, water, and power are scored from a local
-          Netherlands dataset extract; climate and risk are pulled live.
-          Treat it as a starting point for comparison, not a final
-          verdict — a factor marked{" "}
+          The overall score is a weighted blend of the five factors above
+          (power and water count most, isolation least). Isolation, water,
+          and power are scored from a local Netherlands dataset extract —
+          power also folds in the host country&apos;s generation mix from
+          Ember everywhere else; climate and risk are pulled live across all
+          of Europe. Treat it as a starting point for comparison, not a
+          final verdict — a factor marked{" "}
           <span className="font-medium">N/A</span> means that data source
           didn&apos;t respond or doesn&apos;t cover this location yet, not
-          that the risk is zero.
+          that the risk is zero, and a score shown below 100% confidence
+          means part of the weight is missing data.
         </p>
       </div>
     </aside>
