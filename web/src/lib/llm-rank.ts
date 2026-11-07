@@ -5,17 +5,19 @@ const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 // Cheap, fast OpenAI model via OpenRouter. Override with OPENROUTER_MODEL.
 const DEFAULT_MODEL = "openai/gpt-4o-mini"
 
-const SYSTEM_PROMPT = `You help decision-makers compare candidate data centre sites in the Netherlands.
-You will be given a list of candidate sites that have already been scored by a deterministic model
-(power grid access, isolation, telecom, water, roads, flood and seismic risk). Your job is to write a
-short, plain-language comparison of the ranked list — not to re-score anything.
+const SYSTEM_PROMPT = `You help decision-makers compare plots of land for sale as data centre sites in the Netherlands.
+You will be given a list of candidate plots that have already been scored by a deterministic model
+(power grid access, isolation, telecom, water, roads, flood and seismic risk). Each plot also has a size,
+an asking price and the business park it is in. Your job is to write a short, plain-language comparison
+of the ranked list — not to re-score anything. The listings and prices are simulated demo data; refer to
+them as listed or asking prices, never as verified market values.
 
 Rules:
 - Only use the facts given to you. Do not invent distances, place names, or numbers.
 - Be honest about uncertainty: if two sites are close in score, say so instead of overstating the gap.
 - Plain language for a non-technical decision-maker. No jargon, no bullet-point dump of raw numbers.
-- 3-5 sentences total. Mention the top pick by name and why it leads, then one notable trade-off
-  among the rest.`
+- 3-5 sentences total. Name the top plot by its business park and why it leads, then one notable
+  trade-off among the rest (for example a cheaper or larger plot with a slightly lower score).`
 
 /**
  * Asks an LLM (via OpenRouter) to summarise an already-ranked list of sites in plain language.
@@ -31,6 +33,15 @@ export async function summariseRanking(query: string, sites: ScoreResult[]): Pro
     municipality: s.municipality,
     province: s.province,
     score: s.score,
+    ...(s.plot?.listing && {
+      plot: {
+        businessPark: s.plot.listing.parkName,
+        sizeHectares: Math.round(s.plot.listing.areaM2 / 100) / 100,
+        askingPriceEurPerM2: s.plot.listing.perM2,
+        askingPriceEur: s.plot.listing.total,
+        status: s.plot.listing.status === "for_sale" ? "for sale" : "under offer",
+      },
+    }),
     factors: s.factors.map((f) => ({ key: f.key, score: Math.round(f.score * 100), evidence: f.evidence })),
     risks: s.risks.map((r) => ({ key: r.key, multiplier: r.multiplier, evidence: r.evidence })),
   }))

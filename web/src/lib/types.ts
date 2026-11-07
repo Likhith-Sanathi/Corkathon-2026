@@ -76,6 +76,10 @@ export type Listing = {
 
 export type PriceEstimate = import("./pricing").PriceEstimate
 
+/** A featured plot for the right-hand bar: the listing, its exact site score and a simplified outline. */
+export type FeaturedItem = { listing: ListingProps; score: number; outline: [number, number][] }
+export type FeaturedSection = { key: "top" | "value" | "large" | "new"; title: string; hint: string; items: FeaturedItem[] }
+
 export type PlotInfo = {
   parcel: Parcel | null
   parcelError?: string

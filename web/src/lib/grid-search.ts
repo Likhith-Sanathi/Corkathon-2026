@@ -83,3 +83,26 @@ export async function topGridCandidates(
   }
   return picked
 }
+
+/**
+ * A fast scorer for arbitrary points: the precomputed grid cell's score under the given weights
+ * (null outside the Netherlands). Used to pre-rank many candidates before exact scoring.
+ */
+export async function gridScorer(weights: Weights): Promise<(lat: number, lon: number) => number | null> {
+  const { meta, bytes } = await loadGrid()
+  const { west, north, dLon, dLat, cols, rows, fields } = meta
+  const n = cols * rows
+  const w = normaliseWeights(weights)
+  const terms = fields.flatMap((f, k) => (f in w ? [[k * n, w[f as keyof Weights]] as const] : []))
+  const riskOff = fields.indexOf("risk") * n
+  return (lat, lon) => {
+    const r = Math.floor((north - lat) / dLat)
+    const c = Math.floor((lon - west) / dLon)
+    if (r < 0 || r >= rows || c < 0 || c >= cols) return null
+    const i = r * cols + c
+    if (bytes[i] === GRID_NODATA) return null
+    let sum = 0
+    for (const [off, wk] of terms) sum += wk * bytes[off + i]
+    return (100 * sum * bytes[riskOff + i]) / (254 * 254)
+  }
+}

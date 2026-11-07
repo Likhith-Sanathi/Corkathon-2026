@@ -183,6 +183,17 @@ function FitToEvidence({ result }: { result: ScoreResult | null }) {
 }
 
 /** Pans/zooms to fit every search result when a new search completes (same site list: keep the view). */
+/** Keep Leaflet's size in sync when the layout around the map changes (e.g. the featured bar opens). */
+function AutoResize() {
+  const map = useMap()
+  useEffect(() => {
+    const ro = new ResizeObserver(() => map.invalidateSize({ debounceMoveend: true }))
+    ro.observe(map.getContainer())
+    return () => ro.disconnect()
+  }, [map])
+  return null
+}
+
 function FitToSearch({ sites }: { sites: ScoreResult[] }) {
   const map = useMap()
   const lastKey = useRef<string>("")
@@ -641,6 +652,7 @@ export default function SiteMap({ theme, weights, onHeatDomain, layers, filters,
       <ClickToPin onPick={onPick} />
       <FitToEvidence result={result} />
       <FitToSearch sites={searchSites} />
+      <AutoResize />
 
       {municipalities && (
         <GeoJSON
@@ -719,7 +731,14 @@ export default function SiteMap({ theme, weights, onHeatDomain, layers, filters,
               #{i + 1} · {s.score.toFixed(0)}/100
             </b>
             <br />
-            {s.lat.toFixed(4)}, {s.lon.toFixed(4)}
+            {s.plot?.listing ? (
+              <>
+                {s.plot.listing.parkName} · {(s.plot.listing.areaM2 / 10_000).toFixed(1)} ha
+                <br />€{s.plot.listing.perM2}/m² · €{(s.plot.listing.total / 1e6).toFixed(2)}M
+              </>
+            ) : (
+              `${s.lat.toFixed(4)}, ${s.lon.toFixed(4)}`
+            )}
           </Tooltip>
         </Marker>
       ))}
