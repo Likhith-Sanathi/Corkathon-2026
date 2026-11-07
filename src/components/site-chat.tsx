@@ -21,7 +21,7 @@ export type ChatSiteContext = {
   lat: number;
   lon: number;
   country: string | null;
-  score: { overallScore: number | null; factors: FactorResult[] };
+  score: { overallScore: number | null; confidence: number; factors: FactorResult[] };
 };
 
 type Message = { role: "user" | "assistant"; text: string; sources?: string[] };

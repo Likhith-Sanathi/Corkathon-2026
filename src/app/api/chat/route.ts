@@ -15,6 +15,7 @@ type SiteContext = {
   country: string | null;
   score: {
     overallScore: number | null;
+    confidence: number;
     factors: {
       title: string;
       score: number | null;
@@ -33,7 +34,7 @@ type ChatRequestBody = {
 function formatSiteContext(site: SiteContext): string {
   const lines = [
     `Current site being viewed: ${site.displayName} (${site.lat.toFixed(5)}, ${site.lon.toFixed(5)}${site.country ? `, ${site.country}` : ""}).`,
-    `Overall score: ${site.score.overallScore != null ? Math.round(site.score.overallScore) : "N/A"}/100.`,
+    `Overall score: ${site.score.overallScore != null ? Math.round(site.score.overallScore) : "N/A"}/100 (${Math.round(site.score.confidence * 100)}% confidence — share of the weighted factors that had real data).`,
     ...site.score.factors.map(
       (factor) =>
         `- ${factor.title}: ${factor.score != null ? Math.round(factor.score) : "N/A"}/100. ${factor.summary} (Source: ${factor.source})`,

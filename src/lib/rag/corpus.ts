@@ -16,17 +16,22 @@ export const CORPUS: CorpusDoc[] = [
   {
     id: "isolation-methodology",
     title: "How the isolation score is calculated",
-    text: "Isolation measures how remote a site is from dense population centers, which matters for safety, security, and land availability. The app finds the nearest city or town (OpenStreetMap place=city/town) within an 80 km search radius. If none is found, the site scores 100 (maximally isolated). Otherwise the score is the nearest city's distance in km divided by 50 km, scaled to 0-100 and capped at 100 — so a city 50+ km away already scores near the isolation maximum, since being more remote than that stops adding practical value (you still need roads and workers within reach).",
+    text: "Isolation measures how remote a site is from dense population centers, which matters for safety, security, and land availability. This factor is currently only available for sites in the Netherlands, where the app finds the nearest city or town in a local OpenStreetMap extract within an 80 km search radius. If none is found, the site scores 100 (maximally isolated). Otherwise the score is the nearest city's distance in km divided by 50 km, scaled to 0-100 and capped at 100 — so a city 50+ km away already scores near the isolation maximum, since being more remote than that stops adding practical value (you still need roads and workers within reach). Outside the Netherlands, isolation returns no score (N/A) — there's no live fallback, since a prior live Overpass API fallback was removed for being unreachable/unreliable in this environment.",
   },
   {
     id: "water-methodology",
     title: "How the water availability score is calculated",
-    text: "Water availability measures proximity to a river, canal, or lake, which is the usual cooling source for a data center. The app searches OpenStreetMap for the nearest river, canal, or natural water body within 30 km. No match within that radius scores 0. Otherwise the score is 100 minus (distance in km / 20 km) scaled to 0-100 — so water within 20 km scores well, and piping cooling water further than that is considered impractical.",
+    text: "Water availability measures proximity to a river, canal, or lake, which is the usual cooling source for a data center. This factor is currently only available for sites in the Netherlands, using a local OpenStreetMap extract: the app searches for the nearest river, canal, or lake within 30 km. No match within that radius scores 0. Otherwise the score is 100 minus (distance in km / 20 km) scaled to 0-100 — so water within 20 km scores well, and piping cooling water further than that is considered impractical. Outside the Netherlands, water returns no score (N/A) — there's no live fallback, since a prior live Overpass API fallback was removed for being unreachable/unreliable in this environment.",
   },
   {
     id: "power-methodology",
     title: "How the power grid access score is calculated",
-    text: "Power grid access measures proximity to grid infrastructure: substations, power plants, or transmission lines, tagged in OpenStreetMap. The app searches within a 40 km radius. No infrastructure found scores 0. Otherwise the score is 100 minus (distance in km / 30 km) scaled to 0-100 — beyond 30 km, the cost of a new grid connection spur gets steep.",
+    text: "Power grid access combines two signals. Site-level proximity to grid infrastructure (substations, power plants, transmission lines) is only available for sites in the Netherlands, from a local OpenStreetMap extract within a 40 km search radius: no infrastructure found scores 0, otherwise the score is 100 minus (distance in km / 30 km) scaled to 0-100. Country-level grid mix comes from Ember's monthly generation data (trailing-12-month size, fuel diversity, clean-energy share, year-over-year growth) and is available for any European country, not just the Netherlands. For Netherlands sites the final score blends proximity (65% weight) with grid mix (35% weight). For sites elsewhere in Europe, there's no site-level proximity data, so the score is the country's grid-mix score alone (or N/A if the country isn't in the Ember dataset). This is why a non-Netherlands site can still get a real power score even though isolation and water can't.",
+  },
+  {
+    id: "power-grid-mix",
+    title: "What the Ember country-level grid mix measures",
+    text: "The grid-mix signal scores a country's electricity grid on four things from Ember's monthly generation data: total generation size on a log scale (35% weight, bigger grids have more headroom for a new large load), fuel diversity via a Herfindahl-Hirschman index (30% weight, a less fuel-concentrated grid is more resilient to a shock in any one fuel), clean-energy share (20% weight), and year-over-year generation growth as a proxy for expanding vs. shrinking capacity (15% weight). It's a country-level signal — it doesn't know anything about a specific site's distance to a substation.",
   },
   {
     id: "climate-methodology",
@@ -41,22 +46,22 @@ export const CORPUS: CorpusDoc[] = [
   {
     id: "overall-score",
     title: "How the overall site score is calculated",
-    text: "The overall score is the simple average of whichever factor scores were successfully computed (isolation, water, power, climate, risk). If a factor's underlying data source could not be reached, that factor is excluded from the average rather than counted as zero, so a missing data source doesn't unfairly tank a site's overall score. The overall score is null only if every factor failed.",
+    text: "The overall score is a weighted blend of whichever factor scores were successfully computed: power and water are weighted 25% and 20% because they can make a site physically infeasible or dominate its operating cost; climate and risk are weighted 20% each; isolation is weighted 15%, the least, since a well-isolated site with no power or water nearby is still a bad site. If a factor's underlying data source couldn't be reached or doesn't cover that location (N/A), its weight is dropped and the remaining weights are renormalized to still sum to 100% — a site isn't penalized just because one factor is missing. A `confidence` value (0-100%) reports how much of the total weight was actually backed by real data; below 100% confidence means part of the score is resting on fewer factors than usual. The overall score is null only if every factor came back N/A.",
   },
   {
     id: "data-sources",
     title: "Data sources used, by factor",
-    text: "Isolation, water, and power all use OpenStreetMap data queried live through the Overpass API — except for sites in the Netherlands, which use a pre-downloaded local extract (Geofabrik/OpenStreetMap) for speed and reliability instead of live Overpass queries. Climate uses the Open-Meteo Historical Weather API, which is backed by the ERA5 reanalysis dataset. Natural disaster risk uses the EMSC Seismic Portal for earthquake history and the Open-Meteo Elevation API for flood-risk elevation. All of these are free, no-signup-required (or free-registration) EU/open data sources — see API_LINKS.md for the full catalogue, including sources evaluated but not yet wired in (ENTSO-E generation mix, EEA Waterbase, JRC Risk Data Hub/EFAS/EFFIS, Eurostat crime stats, Digital Decade broadband coverage).",
+    text: "Isolation and water are only available for sites in the Netherlands, from a pre-downloaded local OpenStreetMap extract (Geofabrik/OpenStreetMap); elsewhere in Europe they return N/A. Power combines that same Netherlands-only local extract for site-level proximity with Ember's monthly electricity-generation data for a country-level grid-mix signal available anywhere in Europe. Climate uses the Open-Meteo Historical Weather API, backed by the ERA5 reanalysis dataset, and covers all of Europe. Natural disaster risk uses the EMSC Seismic Portal for earthquake history and the Open-Meteo Elevation API for flood-risk elevation, also covering all of Europe. All of these are free, no-signup-required (or free-registration) EU/open data sources — see API_LINKS.md for the full catalogue, including sources evaluated but not yet wired in (EEA Waterbase, JRC Risk Data Hub/EFAS/EFFIS, Eurostat crime stats, Digital Decade broadband coverage).",
   },
   {
     id: "netherlands-local-data",
-    title: "Why the Netherlands uses local data instead of live queries",
-    text: "For sites located in the Netherlands, the isolation, water, and power factors read from a pre-downloaded local OpenStreetMap extract (places, water, and power infrastructure) bundled with the app, instead of calling the live Overpass API. This avoids Overpass rate limits and timeouts for a region used heavily during development and demos, while every other European country still falls back to live Overpass queries.",
+    title: "Why isolation, water, and power are Netherlands-only right now",
+    text: "Isolation, water, and site-level power proximity used to fall back to a live Overpass API call for any site outside the Netherlands, but Overpass turned out to be unreachable/flaky in this environment, so those factors silently returned N/A for most of Europe anyway — including the app's own homepage example cities. The live Overpass fallback was removed entirely rather than leaving a broken-feeling dependency in place: isolation and water are now honestly Netherlands-only (a local OpenStreetMap extract), and power's country-level Ember grid-mix signal was kept and extended to work everywhere, so power can still return a real (if coarser) score outside the Netherlands even though isolation and water can't.",
   },
   {
     id: "missing-data-honesty",
-    title: "What it means when a factor score is missing or data could not be reached",
-    text: "Every factor can fail independently if its underlying API is unreachable or times out — for example Overpass, Open-Meteo, or the EMSC seismic service. When that happens the factor's score is null and shown as N/A, with a summary explaining which service could not be reached, instead of guessing a number. A null factor is excluded from the overall score average. This is a deliberate design choice: the tool would rather show missing data honestly than present false precision.",
+    title: "What it means when a factor score is missing (N/A)",
+    text: "A factor shows N/A either because its underlying API is unreachable/times out (Open-Meteo, the EMSC seismic service) or because it simply has no coverage for that location (isolation and water outside the Netherlands). Either way, the tool reports N/A with a plain-language reason instead of guessing a number, and N/A factors are dropped from the overall score's weighting rather than counted as zero. This is a deliberate design choice: the tool would rather show missing data honestly, with a lower reported confidence, than present false precision.",
   },
   {
     id: "project-scope",
