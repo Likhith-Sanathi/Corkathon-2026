@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import type { Marker } from "@/lib/scoring/types";
 import { ROLE_COLOR, ROLE_LABEL } from "@/lib/scoring/roles";
+import { SiteChat } from "@/components/site-chat";
 
 const SiteMap = dynamic(
   () => import("@/components/site-map").then((mod) => mod.SiteMap),
@@ -322,6 +323,20 @@ export function SiteSearch() {
           Search another site
         </button>
       )}
+
+      <SiteChat
+        site={
+          status.state === "success"
+            ? {
+                displayName: status.site.displayName,
+                lat: status.site.lat,
+                lon: status.site.lon,
+                country: status.site.country,
+                score: status.score,
+              }
+            : undefined
+        }
+      />
     </div>
   );
 }
