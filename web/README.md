@@ -39,6 +39,21 @@ There is no open data on which Dutch plots are for sale or what they cost, so fo
 
 Any other parcel you pin gets an **estimated land value** from the same model: industrial pricing inside business parks, farmland pricing (≈€75k/ha, scaled by regional price level) outside them. Everything simulated is marked **Simulated** in the panel.
 
+## Testing
+
+```bash
+npm test               # unit, API and data-integrity tests (Vitest, ~1 s)
+npm run test:coverage  # same, with coverage thresholds on the scoring/pricing/geometry core
+npm run build && npm run test:e2e   # end-to-end tests against the production build (Playwright)
+```
+
+- `test/unit/`: geometry, scoring model, pricing model, plot and park lookups, score grid.
+- `test/api/`: every route handler called directly, with Nominatim, PDOK and OpenRouter mocked (no network): success paths, validation (400), outside-the-Netherlands (422), degraded upstreams (502, parcel service down), "did you mean" suggestions, and the chat's tool calls.
+- `test/data/`: integrity of every generated file in `public/data` (schemas, value ranges, coordinates inside the Netherlands, grid size and no-data consistency, every listing's label point inside its own parcel).
+- `e2e/`: landing page, map and heatmap, dropping a pin, outside-NL rejection, live reweighting, themes, panel toggles, featured listings and the plot search, at desktop and laptop widths.
+
+CI (`.github/workflows/ci.yml`) runs lint, typecheck, unit tests on Node 20/22/24 (coverage on 22), the end-to-end suite, a production build, a Python compile check of the data script and a production dependency audit, plus a nightly run. The **CI passed** job is the single check to require in branch protection.
+
 ## How it works
 
 - `POST /api/score` with `{ lat, lon, weights? }` returns the score, every sub-score, and the evidence. Points outside the Netherlands get a `422`.

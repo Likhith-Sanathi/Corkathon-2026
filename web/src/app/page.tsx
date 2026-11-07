@@ -1,20 +1,21 @@
 import { FloatingChat } from "@/components/chat-panel"
-import { DataSources } from "@/components/data-sources"
-import { FactorsSection } from "@/components/factors-section"
-import { Hero } from "@/components/hero"
-import { HowItWorks } from "@/components/how-it-works"
-import { Nav } from "@/components/nav"
+import { Cta, FactorsSection, GridLines, Hero, Manifesto, MapSection, Method, Numbers, SourcesMarquee, SwissNav } from "@/components/landing/sections"
 import { SmoothScroll } from "@/components/smooth-scroll"
 
 export default function Home() {
   return (
     <SmoothScroll>
-      <Nav />
-      <main className="flex flex-1 flex-col">
+      <SwissNav />
+      <GridLines />
+      <main className="relative z-10 flex flex-1 flex-col overflow-x-clip">
         <Hero />
-        <HowItWorks />
+        <Manifesto />
+        <MapSection />
         <FactorsSection />
-        <DataSources />
+        <Method />
+        <Numbers />
+        <SourcesMarquee />
+        <Cta />
       </main>
       <FloatingChat />
     </SmoothScroll>

@@ -5,11 +5,17 @@ on:
     branches: [main]
     paths:
       - "web/**"
+      - "scripts/**"
       - ".github/workflows/ci.yml"
   pull_request:
     paths:
       - "web/**"
+      - "scripts/**"
       - ".github/workflows/ci.yml"
+  # Nightly run catches drift that no commit triggers (new dependency releases, browser updates).
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -17,6 +23,10 @@ concurrency:
 
 permissions:
   contents: read
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+  NODE_VERSION: "22"
 
 defaults:
   run:
@@ -31,11 +41,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
-      - run: npm run lint
+      - run: npm run lint -- --max-warnings=0
 
   typecheck:
     name: Typecheck
@@ -45,11 +55,59 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
       - run: npx tsc --noEmit
+
+  unit:
+    name: Unit, API & data tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      # Coverage thresholds (vitest.config.mts) are enforced on one Node version; the others just run the tests.
+      - name: Test with coverage
+        if: matrix.node == 22
+        run: npm run test:coverage
+      - name: Test
+        if: matrix.node != 22
+        run: npm test
+      - name: Upload coverage report
+        if: matrix.node == 22 && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: web/coverage
+          retention-days: 14
+          if-no-files-found: ignore
+
+  data-pipeline:
+    name: Data pipeline scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The build itself needs the multi-GB OSM extract, so CI only checks the script still compiles;
+      # the data it produced is validated by the data integrity tests in the unit job.
+      - run: python -I -m py_compile scripts/build_data.py
 
   build:
     name: Build
@@ -59,10 +117,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: web/package-lock.json
-
       - name: Cache Next.js build cache
         uses: actions/cache@v4
         with:
@@ -70,6 +127,83 @@ jobs:
           key: next-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}-${{ hashFiles('web/src/**') }}
           restore-keys: |
             next-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}-
-
       - run: npm ci
       - run: npm run build
+
+  e2e:
+    name: End-to-end (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Cache Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: web/.next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}-${{ hashFiles('web/src/**') }}
+          restore-keys: |
+            next-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}-
+      - run: npm ci
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
+      - name: Install Playwright browser
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install Playwright system deps
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - run: npm run build
+      - run: npm run test:e2e
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            web/playwright-report
+            web/test-results
+          retention-days: 14
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # Production dependencies only; fails on high or critical advisories.
+      - run: npm audit --omit=dev --audit-level=high
+
+  # Single required check for branch protection: green only if every job above passed.
+  ci-ok:
+    name: CI passed
+    if: always()
+    needs: [lint, typecheck, unit, data-pipeline, build, e2e, audit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Check all jobs
+        run: |
+          echo '${{ toJSON(needs) }}' | python3 -c '
+          import json, sys
+          needs = json.load(sys.stdin)
+          bad = {k: v["result"] for k, v in needs.items() if v["result"] != "success"}
+          print("job results:", {k: v["result"] for k, v in needs.items()})
+          sys.exit(f"failed: {bad}" if bad else 0)
+          '

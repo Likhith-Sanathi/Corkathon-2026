@@ -62,15 +62,51 @@ async function parcelsFor(park: BusinessPark): Promise<PdokParcel[]> {
   return out
 }
 
-/** A point inside a ring: its centroid if inside, else the middle of the widest inside span at that latitude. */
-function labelPoint(ring: Ring): [number, number] {
-  const cx = ring.reduce((a, p) => a + p[0], 0) / ring.length
-  const cy = ring.reduce((a, p) => a + p[1], 0) / ring.length
-  if (inPolygon(cx, cy, [ring])) return [cx, cy]
+/**
+ * A point guaranteed to lie inside a polygon (outer ring minus holes): its centroid if that qualifies,
+ * otherwise the middle of the widest inside span along one of several horizontal scan lines.
+ * (Using only the outer ring put ~2% of labels inside a hole, i.e. on the neighbouring enclave parcel.)
+ */
+function labelPoint(rings: Ring[]): [number, number] {
+  const outer = rings[0]
+  const cx = outer.reduce((a, p) => a + p[0], 0) / outer.length
+  const cy = outer.reduce((a, p) => a + p[1], 0) / outer.length
+  if (inPolygon(cx, cy, rings)) return [cx, cy]
+  const ys = outer.map((p) => p[1])
+  const [minY, maxY] = [Math.min(...ys), Math.max(...ys)]
+  let best: [number, number] = [cx, cy]
+  let width = -1
+  for (let k = 1; k <= 15; k++) {
+    const y = minY + ((maxY - minY) * k) / 16
+    const xs: number[] = []
+    for (const ring of rings)
+      for (let i = 0; i < ring.length - 1; i++) {
+        const [x1, y1] = ring[i]
+        const [x2, y2] = ring[i + 1]
+        if (y1 > y !== y2 > y) xs.push(x1 + ((y - y1) * (x2 - x1)) / (y2 - y1))
+      }
+    xs.sort((a, b) => a - b)
+    for (let i = 0; i + 1 < xs.length; i += 2)
+      if (xs[i + 1] - xs[i] > width && inPolygon((xs[i] + xs[i + 1]) / 2, y, rings)) {
+        width = xs[i + 1] - xs[i]
+        best = [(xs[i] + xs[i + 1]) / 2, y]
+      }
+  }
+  return best
+}
+
+/**
+ * The original outer-ring-only label, kept solely for choosing which parcels become listings, so the
+ * synthetic listing set stays stable. Use labelPoint() for anything shown or clicked.
+ */
+function selectionPoint(outer: Ring): [number, number] {
+  const cx = outer.reduce((a, p) => a + p[0], 0) / outer.length
+  const cy = outer.reduce((a, p) => a + p[1], 0) / outer.length
+  if (inPolygon(cx, cy, [outer])) return [cx, cy]
   const xs: number[] = []
-  for (let i = 0; i < ring.length - 1; i++) {
-    const [x1, y1] = ring[i]
-    const [x2, y2] = ring[i + 1]
+  for (let i = 0; i < outer.length - 1; i++) {
+    const [x1, y1] = outer[i]
+    const [x2, y2] = outer[i + 1]
     if (y1 > cy !== y2 > cy) xs.push(x1 + ((cy - y1) * (x2 - x1)) / (y2 - y1))
   }
   xs.sort((a, b) => a - b)
@@ -94,12 +130,19 @@ async function listingsFor(park: BusinessPark): Promise<Listing[]> {
     .map((f) => {
       const polys = (f.geometry.type === "Polygon" ? [f.geometry.coordinates] : f.geometry.coordinates) as Ring[][]
       const largest = polys.reduce((a, b) => (b[0].length > a[0].length ? b : a))
-      const [lon, lat] = labelPoint(largest[0])
+      const [selLon, selLat] = selectionPoint(largest[0])
       const q = f.properties
-      return { polys, lat, lon, area: q.kadastrale_grootte_waarde, id: `${q.kadastrale_gemeente_waarde} ${q.sectie} ${q.perceelnummer}` }
+      return {
+        polys,
+        largest,
+        selLat,
+        selLon,
+        area: q.kadastrale_grootte_waarde,
+        id: `${q.kadastrale_gemeente_waarde} ${q.sectie} ${q.perceelnummer}`,
+      }
     })
     .filter((c) => c.area >= 1500 && c.area <= maxArea)
-    .filter((c) => park.geometry.coordinates.some((poly) => inPolygon(c.lon, c.lat, poly)))
+    .filter((c) => park.geometry.coordinates.some((poly) => inPolygon(c.selLon, c.selLat, poly)))
     .sort((a, b) => seeded(`${p.id}:${a.id}`) - seeded(`${p.id}:${b.id}`)) // stable shuffle
 
   const out: Listing[] = []
@@ -107,7 +150,8 @@ async function listingsFor(park: BusinessPark): Promise<Listing[]> {
   for (const c of candidates) {
     if (total >= target * 0.9 || out.length >= MAX_LISTINGS_PER_PARK) break
     total += c.area
-    const price = estimatePrice(data, c.lat, c.lon, { areaM2: c.area, seed: c.id, park: p })
+    const price = estimatePrice(data, c.selLat, c.selLon, { areaM2: c.area, seed: c.id, park: p })
+    const [lon, lat] = labelPoint(c.largest) // inside the parcel, holes excluded
     const daysAgo = 3 + Math.floor(seeded(`${c.id}:date`) * 260)
     out.push({
       type: "Feature",
@@ -122,8 +166,8 @@ async function listingsFor(park: BusinessPark): Promise<Listing[]> {
         listedOn: new Date(TODAY.getTime() - daysAgo * 86_400_000).toISOString().slice(0, 10),
         perM2: price.perM2,
         total: price.total ?? 0,
-        lat: r6(c.lat),
-        lon: r6(c.lon),
+        lat: r6(lat),
+        lon: r6(lon),
         synthetic: true,
       },
       geometry: { type: "MultiPolygon", coordinates: c.polys.map((poly) => poly.map((ring) => ring.map(([x, y]) => [r6(x), r6(y)]))) },

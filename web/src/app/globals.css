@@ -7,6 +7,8 @@
 
 @theme inline {
   --color-background: var(--background);
+  --color-swiss-red: var(--swiss-red);
+  --color-swiss-blue: var(--swiss-blue);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
@@ -50,6 +52,9 @@
 }
 
 :root {
+  /* Dutch flag red and blue */
+  --swiss-red: #ae1c28;
+  --swiss-blue: #21468b;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -85,6 +90,8 @@
 }
 
 .dark {
+  --swiss-red: #e0404d;
+  --swiss-blue: #4f7fd6;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);

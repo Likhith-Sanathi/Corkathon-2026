@@ -126,7 +126,7 @@ function PointLayer<T extends Pt>({
   const map = useMap()
   useEffect(() => {
     if (!items) return
-    const renderer = L.canvas({ padding: 0.15 })
+    const renderer = L.canvas({ padding: 0.15, tolerance: 4 }) // tolerance: small dots still easy to hover
     const interactive = Boolean(tooltipFor || onClick) // decorative layers skip mouse hit-testing
     const group = L.layerGroup()
     const sized: [L.CircleMarker, number][] = []
@@ -535,7 +535,7 @@ export default function SiteMap({
   const placeFill = theme === "light" ? "#334155" : "#e4e4e7"
 
   const substationStyle = useCallback(
-    (s: Substation): PointStyle => (s.kv < minKv ? null : s.kv >= 380 ? glyph("sub380", 15) : glyph("sub", 12)),
+    (s: Substation): PointStyle => (s.kv < minKv ? null : s.kv >= 380 ? glyph("sub380", 9) : glyph("sub", 7)),
     [minKv, glyph],
   )
   const substationTip = useCallback((s: Substation) => titled(s.name, `${s.kv} kV substation`), [])
@@ -553,7 +553,7 @@ export default function SiteMap({
   )
 
   const telecomStyle = useCallback(
-    (t: TelecomSite): PointStyle => (t.type === "data_center" ? glyph("dc", 15) : glyph("exchange", 9)),
+    (t: TelecomSite): PointStyle => (t.type === "data_center" ? glyph("dc", 9) : glyph("exchange", 6)),
     [glyph],
   )
   const telecomTip = useCallback(
@@ -565,7 +565,7 @@ export default function SiteMap({
     (w: WaterFeature): PointStyle => ({ radius: w.type === "lake" || w.type === "reservoir" ? 2.6 : 1.5, stroke: false, fillColor: "#38bdf8", fillOpacity: 0.7 }),
     [],
   )
-  const junctionStyle = useCallback((): PointStyle => glyph("junction", 7.5), [glyph])
+  const junctionStyle = useCallback((): PointStyle => glyph("junction", 6.8), [glyph])
   const junctionTip = useCallback((j: Junction) => titled(j.name, "Motorway junction"), [])
 
   const minRank = PLACE_RANK[filters.minPlace]
