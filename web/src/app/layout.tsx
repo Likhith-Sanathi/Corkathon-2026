@@ -11,14 +11,14 @@ export const metadata: Metadata = {
   description: "Drop a pin anywhere in the Netherlands to score it as a data centre site.",
 }
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     // The theme script sets classes on <html> before React hydrates.
     <html lang="en" className={`${inter.variable} h-full antialiased`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body className="h-full overflow-hidden font-sans">
+      <body className="h-full font-sans">
         <TooltipProvider>{children}</TooltipProvider>
       </body>
     </html>
