@@ -10,6 +10,8 @@ import {
   FLOOD_COLORS,
   FLOOD_FALLBACK,
   PLACE_RANK,
+  POWER_380,
+  POWER_HV,
   type Basemap,
   type Filters,
   type LayerKey,
@@ -55,33 +57,52 @@ function useLayer<T>(name: string, enabled: boolean): T | null {
 // ---------- canvas point layer ----------
 type Pt = { lat: number; lon: number }
 type PointStyle = L.CircleMarkerOptions | null
+/** Marker size multiplier: about half size at country zoom, full size from street level. */
+const zoomScale = (z: number) => Math.min(1.15, Math.max(0.5, 0.5 + (z - 7) * 0.15))
+
 function PointLayer<T extends Pt>({
   items,
   styleFor,
   tooltipFor,
+  maxZoom,
 }: {
   items: T[] | null
   styleFor: (item: T) => PointStyle
   tooltipFor?: (item: T) => string | null
+  /** Hide the layer when zoomed in past this level. */
+  maxZoom?: number
 }) {
   const map = useMap()
   useEffect(() => {
     if (!items) return
     const renderer = L.canvas({ padding: 0.5 })
     const group = L.layerGroup()
+    const sized: [L.CircleMarker, number][] = []
     for (const it of items) {
       const style = styleFor(it)
       if (!style) continue
-      const marker = L.circleMarker([it.lat, it.lon], { renderer, ...style })
+      const base = style.radius ?? 4
+      const marker = L.circleMarker([it.lat, it.lon], { renderer, ...style, radius: base * zoomScale(map.getZoom()) })
       const tip = tooltipFor?.(it)
       if (tip) marker.bindTooltip(tip, { direction: "top", offset: [0, -4] })
       group.addLayer(marker)
+      sized.push([marker, base])
     }
-    group.addTo(map)
+    const sync = () => {
+      const z = map.getZoom()
+      const k = zoomScale(z)
+      for (const [m, base] of sized) m.setRadius(Math.max(1, base * k))
+      const visible = maxZoom === undefined || z <= maxZoom
+      if (visible && !map.hasLayer(group)) group.addTo(map)
+      if (!visible && map.hasLayer(group)) group.remove()
+    }
+    sync()
+    map.on("zoomend", sync)
     return () => {
+      map.off("zoomend", sync)
       group.remove()
     }
-  }, [map, items, styleFor, tooltipFor])
+  }, [map, items, styleFor, tooltipFor, maxZoom])
   return null
 }
 
@@ -186,14 +207,16 @@ export default function SiteMap({ theme, layers, filters, basemap, pin, result, 
     (s: Substation): PointStyle =>
       s.kv < minKv
         ? null
-        : { radius: s.kv >= 380 ? 6 : 4, color: ring, weight: 1, fillColor: s.kv >= 380 ? "#ea580c" : "#f59e0b", fillOpacity: 0.95 },
+        : s.kv >= 380
+          ? { radius: 6.5, color: ring, weight: 1.5, fillColor: POWER_380, fillOpacity: 1 }
+          : { radius: 4, color: ring, weight: 1, fillColor: POWER_HV, fillOpacity: 0.95 },
     [minKv, ring],
   )
   const substationTip = useCallback((s: Substation) => titled(s.name, `${s.kv} kV substation`), [])
 
   const lineStyle = useCallback(
     (l: PowerLine): PointStyle =>
-      l.kv < minKv ? null : { radius: 3, stroke: false, fillColor: l.kv >= 380 ? "#ea580c" : "#fbbf24", fillOpacity: 0.9 },
+      l.kv < minKv ? null : { radius: 3, stroke: false, fillColor: l.kv >= 380 ? POWER_380 : "#fbbf24", fillOpacity: 0.9 },
     [minKv],
   )
   const lineTip = useCallback((l: PowerLine) => titled(l.name, `${l.kv} kV line`), [])
@@ -204,14 +227,11 @@ export default function SiteMap({ theme, layers, filters, basemap, pin, result, 
   )
 
   const telecomStyle = useCallback(
-    (t: TelecomSite): PointStyle => ({
-      radius: t.type === "data_center" ? 6 : 3.5,
-      color: ring,
-      weight: 1,
-      fillColor: t.type === "data_center" ? "#059669" : "#34d399",
-      fillOpacity: 0.95,
-    }),
-    [ring],
+    (t: TelecomSite): PointStyle =>
+      t.type === "data_center"
+        ? { radius: 6.5, color: ring, weight: 1.5, fillColor: theme === "light" ? "#059669" : "#34d399", fillOpacity: 1 }
+        : { radius: 3, color: ring, weight: 1, fillColor: theme === "light" ? "#6ee7b7" : "#10b981", fillOpacity: theme === "light" ? 0.9 : 0.55 },
+    [ring, theme],
   )
   const telecomTip = useCallback(
     (t: TelecomSite) => titled(t.name, t.type === "data_center" ? "Data centre" : "Telecom exchange"),
@@ -236,7 +256,7 @@ export default function SiteMap({ theme, layers, filters, basemap, pin, result, 
   const minMag = filters.minMagnitude
   const seismicStyle = useCallback(
     (q: SeismicEvent): PointStyle =>
-      q.mag < minMag ? null : { radius: 2 + Math.max(0, q.mag) * 2.2, color: "#b91c1c", weight: 1, fillColor: "#ef4444", fillOpacity: 0.35 },
+      q.mag < minMag ? null : { radius: 3 + Math.max(0, q.mag) * 2.4, color: "#f87171", weight: 1.5, fillColor: "#ef4444", fillOpacity: 0.12 },
     [minMag],
   )
   const seismicTip = useCallback((q: SeismicEvent) => `<b>M${q.mag.toFixed(1)}</b> · ${q.time}<br/>${esc(q.place)}`, [])
@@ -245,7 +265,7 @@ export default function SiteMap({ theme, layers, filters, basemap, pin, result, 
     (f?: GeoJSON.Feature) => {
       const t = (f?.properties as FloodZone["properties"] | undefined)?.type ?? ""
       const c = FLOOD_COLORS[t] ?? FLOOD_FALLBACK
-      return { color: c, weight: 1, fillColor: c, fillOpacity: t === "D" ? 0.35 : 0.18 }
+      return { color: c, weight: 2, fillColor: c, fillOpacity: t === "D" ? 0.5 : 0.32 }
     },
     [],
   )
@@ -253,6 +273,28 @@ export default function SiteMap({ theme, layers, filters, basemap, pin, result, 
     const p = f.properties as FloodZone["properties"]
     layer.bindTooltip(`<b>${esc(p.basin)} · type ${esc(p.type)}</b><br/>${esc(p.label)}`, { sticky: true })
   }, [])
+
+  // At country zoom the 2 km zones are only a few pixels wide, so mark each one with a ring.
+  const floodMarkers = useMemo(
+    () =>
+      flood?.features.map((f) => {
+        const ring = f.geometry.coordinates[0]
+        return {
+          lat: ring.reduce((a, p) => a + p[1], 0) / ring.length,
+          lon: ring.reduce((a, p) => a + p[0], 0) / ring.length,
+          ...f.properties,
+        }
+      }) ?? null,
+    [flood],
+  )
+  const floodMarkerStyle = useCallback((z: { type: string }): PointStyle => {
+    const c = FLOOD_COLORS[z.type] ?? FLOOD_FALLBACK
+    return { radius: 9, color: c, weight: 2, fillColor: c, fillOpacity: 0.25 }
+  }, [])
+  const floodMarkerTip = useCallback(
+    (z: { basin: string; type: string; label: string }) => `<b>${esc(z.basin)} · type ${esc(z.type)}</b><br/>${esc(z.label)}`,
+    [],
+  )
 
   const tile = BASEMAPS[basemap]
   const evidence = useMemo(() => (result && pin ? result.points : []), [result, pin])
@@ -285,6 +327,7 @@ export default function SiteMap({ theme, layers, filters, basemap, pin, result, 
         <GeoJSON data={flood as unknown as GeoJSON.FeatureCollection} style={floodStyle} onEachFeature={floodEach} />
       )}
 
+      <PointLayer items={floodMarkers} styleFor={floodMarkerStyle} tooltipFor={floodMarkerTip} maxZoom={10} />
       <PointLayer items={water} styleFor={waterStyle} />
       <PointLayer items={towers} styleFor={towerStyle} />
       <PointLayer items={lines} styleFor={lineStyle} tooltipFor={lineTip} />

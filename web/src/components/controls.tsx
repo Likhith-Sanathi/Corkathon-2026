@@ -89,14 +89,31 @@ export function LayerControls({
     <Section title="Map layers">
       <div className="space-y-2.5">
         {LAYERS.map((l) => (
-          <label key={l.key} className="flex cursor-pointer items-center justify-between gap-3">
-            <span className="flex min-w-0 items-center gap-2.5 text-sm">
-              <span className="size-2.5 shrink-0 rounded-full" style={{ background: l.color }} />
-              <span className="truncate">{l.label}</span>
-              <span className="shrink-0 text-xs text-muted-foreground">{l.hint}</span>
-            </span>
-            <Switch checked={layers[l.key]} onCheckedChange={(on) => onToggle(l.key, on)} />
-          </label>
+          <div key={l.key} className="space-y-1.5">
+            <label className="flex cursor-pointer items-center justify-between gap-3">
+              <span className="flex min-w-0 items-center gap-2.5 text-sm">
+                <span className="size-2.5 shrink-0 rounded-full" style={{ background: l.color }} />
+                <span className="truncate">{l.label}</span>
+                <span className="shrink-0 text-xs text-muted-foreground">{l.hint}</span>
+              </span>
+              <Switch checked={layers[l.key]} onCheckedChange={(on) => onToggle(l.key, on)} />
+            </label>
+            {l.legend && layers[l.key] && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-5 text-xs text-muted-foreground">
+                {l.legend.map((item) => (
+                  <span key={item.label} className="flex items-center gap-1.5">
+                    <span className="flex w-2.5 justify-center">
+                      <span
+                        className="shrink-0 rounded-full"
+                        style={{ width: item.size ?? 8, height: item.size ?? 8, background: item.color }}
+                      />
+                    </span>
+                    {item.label}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         ))}
       </div>
     </Section>

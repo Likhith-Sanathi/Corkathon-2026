@@ -18,17 +18,58 @@ export type LayerDef = {
   color: string
   files: string[]
   defaultOn: boolean
+  /** Sub-categories shown under the toggle; size is a dot diameter in px. */
+  legend?: { color: string; label: string; size?: number; hollow?: boolean }[]
 }
 
+export const POWER_380 = "#dc2626"
+export const POWER_HV = "#f59e0b"
+export const FLOOD_COLORS: Record<string, string> = { B: "#7dd3fc", D: "#3b82f6" }
+export const FLOOD_FALLBACK = "#a5b4fc"
+
 export const LAYERS: LayerDef[] = [
-  { key: "substations", label: "Substations ≥110 kV", hint: "power.csv", color: "#f59e0b", files: ["substations"], defaultOn: true },
+  {
+    key: "substations",
+    label: "Substations ≥110 kV",
+    hint: "power.csv",
+    color: POWER_HV,
+    files: ["substations"],
+    defaultOn: true,
+    legend: [
+      { color: POWER_380, label: "380 kV", size: 10 },
+      { color: POWER_HV, label: "110–220 kV", size: 7 },
+    ],
+  },
   { key: "hv", label: "HV lines & pylons", hint: "power.csv", color: "#fbbf24", files: ["lines", "towers"], defaultOn: false },
-  { key: "telecom", label: "Data centres & exchanges", hint: "telecom.csv", color: "#10b981", files: ["telecom"], defaultOn: true },
+  {
+    key: "telecom",
+    label: "Data centres & exchanges",
+    hint: "telecom.csv",
+    color: "#10b981",
+    files: ["telecom"],
+    defaultOn: true,
+    legend: [
+      { color: "#10b981", label: "Data centre", size: 10 },
+      { color: "#10b981", label: "Exchange", size: 5 },
+    ],
+  },
   { key: "water", label: "Rivers, canals & lakes", hint: "water.csv", color: "#0ea5e9", files: ["water"], defaultOn: false },
   { key: "junctions", label: "Motorway junctions", hint: "roads.csv", color: "#8b5cf6", files: ["junctions"], defaultOn: false },
   { key: "places", label: "Settlements", hint: "isolation.csv", color: "#64748b", files: ["places"], defaultOn: false },
-  { key: "flood", label: "Flood risk zones", hint: "flood.csv", color: "#3b82f6", files: ["flood"], defaultOn: true },
-  { key: "seismic", label: "Earthquakes", hint: "seismic.csv", color: "#ef4444", files: ["seismic"], defaultOn: false },
+  {
+    key: "flood",
+    label: "Flood risk zones",
+    hint: "flood.csv",
+    color: "#3b82f6",
+    files: ["flood"],
+    defaultOn: true,
+    legend: [
+      { color: "#3b82f6", label: "Unprotected" },
+      { color: "#7dd3fc", label: "Protected" },
+      { color: "#a5b4fc", label: "Other" },
+    ],
+  },
+  { key: "seismic", label: "Earthquakes", hint: "seismic.csv", color: "#f87171", files: ["seismic"], defaultOn: false },
   { key: "municipalities", label: "Municipal borders", hint: "PDOK", color: "#94a3b8", files: ["municipalities"], defaultOn: false },
 ]
 
@@ -39,9 +80,6 @@ export const FACTOR_COLORS: Record<FactorKey, string> = {
   water: "#0ea5e9",
   roads: "#8b5cf6",
 }
-
-export const FLOOD_COLORS: Record<string, string> = { B: "#60a5fa", D: "#1d4ed8" }
-export const FLOOD_FALLBACK = "#93c5fd"
 
 export type VoltageFilter = "110" | "220" | "380"
 export type PlaceFilter = "hamlet" | "village" | "suburb" | "town" | "city"
