@@ -1,61 +1,14 @@
-# API Links — Data Center Site Selection (Europe)
+# Data Sources — Data Center Site Selection (Europe)
 
-Reference list of every data source used for site scoring. All are free or free-tier; two require registration before a key/token is issued — apply for those early.
+Each category has a free EU source. Most need no key, but ENTSO-E and Copernicus need a registration step.
 
-## Geocoding (place name → coordinates)
-- **Nominatim (OpenStreetMap)**
-  Docs: https://nominatim.org/release-docs/latest/api/Search/
-  Example: `https://nominatim.openstreetmap.org/search?q=<place>&format=json`
-  Auth: none. Usage policy: max 1 req/sec, must set a descriptive User-Agent. https://operations.osmfoundation.org/policies/nominatim/
+| Category | Source | Access | Notes |
+|---|---|---|---|
+| Diverse power sources | **ENTSO-E Transparency Platform**: actual generation per production type | Free token, requested by email to transparency@entsoe.eu | Covers 60+ bidding zones. Compute a diversity index (e.g. Herfindahl) on the mix. Country-level, not site-level. |
+| Water | **EEA Waterbase**: water quantity (1901–2025, released July 2026) and water quality (1900–2025) | Free CSV/SQLite download; Discodata endpoint for filtered queries | River flow, abstraction and water-scarcity indicators. Reporting varies by country, so check coverage per area. |
+| Natural calamity risk | **JRC Risk Data Hub API** (since November 2023) | Free, no key listed in the sources found | Multi-hazard, with exposure, vulnerability and historical losses across EU, EFTA and IPA countries. Also **EFAS** flood hazard maps (free, no restrictions) and **EFFIS** for wildfire. Auth and rate limits not yet tested. |
+| Crime | **Eurostat** `crim_gen` (national) and `crim_gen_reg` (NUTS 3) | Free, Eurostat API | Police-recorded offences by ICCS category. NUTS 3 regional coverage runs about 2008–2023. Coarse and not comparable everywhere: some countries are excluded from some offence types. |
+| Broadband | **Digital Decade "Broadband Coverage in Europe"** (final dataset) | Free download, annual | Fixed, VHCN, NGA, mobile and rural coverage by country and NUTS 3. Static annual dataset, not a live API. The EU broadband-mapping.eu platform has QoS data; access not yet checked. |
+| Temperature | **Copernicus Climate Data Store, ERA5** reanalysis (hourly, about 0.25°) | Free account, then the `cdsapi` Python client; accept each dataset's terms | Historical and gridded. Forecasts come from other sources. |
+| Map data | **OpenStreetMap** (roads, buildings, power lines, amenities) | Free, Overpass API | ODbL licence, so check share-alike obligations for a commercial product. Coverage in rural areas varies. |
 
-## Isolation
-- **GHSL — Global Human Settlement Layer** (Copernicus / EC Joint Research Centre)
-  Overview: https://human-settlement.emergency.copernicus.eu/dataToolsOverview.php
-  Population grid: https://human-settlement.emergency.copernicus.eu/ghs_pop.php
-  Auth: none.
-- **Overpass API** (OpenStreetMap)
-  Endpoint: https://overpass-api.de/api/interpreter
-  Docs: https://wiki.openstreetmap.org/wiki/Overpass_API
-  Auth: none. Use the `around:<meters>` filter; no built-in nearest-distance function, compute distance client-side.
-
-## Water
-- **EU-Hydro River & Lake Network** (Copernicus Land Monitoring Service)
-  Product page: https://land.copernicus.eu/api/en/products/eu-hydro
-  River network dataset: https://land.copernicus.eu/imagery-in-situ/eu-hydro/eu-hydro-river-network-database
-  Auth: none (download API / WMS / REST).
-- **WISE Waterbase — Water Quantity** (European Environment Agency)
-  Dataset: https://www.eea.europa.eu/data-and-maps/data/waterbase-water-quantity-11
-  Auth: none.
-
-## Power grid access
-- **ENTSO-E Transparency Platform**
-  Platform: https://transparency.entsoe.eu/
-  API endpoint: `https://web-api.tp.entsoe.eu/api`
-  API guide: https://transparency.entsoe.eu/content/static_content/Static%20content/web%20api/Guide.html
-  Auth: **required** — register an account, then email `transparency@entsoe.eu` with subject "Restful API access" to request token approval (manual, ~3 business days). Apply early.
-
-## Climate / cooling cost
-- **Copernicus Climate Data Store (CDS) — ERA5 reanalysis**
-  CDS: https://climate.copernicus.eu/the-climate-data-store
-  Python client (`cdsapi`): https://github.com/ecmwf/cdsapi
-  Auth: **required** — free Copernicus account, API key from your CDS profile page.
-
-## Natural disaster risk
-- **EMSC Seismic Portal (FDSN event API)**
-  Portal: https://www.seismicportal.eu/
-  Auth: none.
-- **Copernicus EFAS (European Flood Awareness System)**, part of CEMS
-  Project page: https://www.ecmwf.int/en/research/projects/efas
-  CEMS data access: https://emergency.copernicus.eu/data/
-  Auth: none for public flood maps/forecasts.
-
-## Summary
-
-| Factor | API | Auth |
-|---|---|---|
-| Geocoding | Nominatim | None (rate-limited) |
-| Isolation | GHSL population grid, Overpass API | None |
-| Water | EU-Hydro river/lake network, WISE Waterbase | None |
-| Power grid | ENTSO-E Transparency Platform | Token (manual approval) |
-| Climate/cooling | Copernicus CDS (ERA5) | Free account + key |
-| Disaster risk | EMSC Seismic Portal, Copernicus EFAS | None |
