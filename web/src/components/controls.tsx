@@ -1,6 +1,6 @@
 "use client"
 
-import { RotateCcw } from "lucide-react"
+import { Moon, MoonStar, RotateCcw, Sun } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
@@ -16,7 +16,9 @@ import {
   type VoltageFilter,
 } from "@/lib/layers"
 import { FACTOR_LABELS, normaliseWeights } from "@/lib/scoring"
+import type { Theme } from "@/lib/theme"
 import type { FactorKey, Weights } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 const one = (v: number | readonly number[]) => (Array.isArray(v) ? v[0] : (v as number))
 
@@ -206,5 +208,37 @@ export function FilterControls({
         </p>
       </div>
     </Section>
+  )
+}
+
+const THEME_ITEMS: { value: Theme; label: string; Icon: typeof Sun }[] = [
+  { value: "light", label: "Light", Icon: Sun },
+  { value: "dark", label: "Dark", Icon: Moon },
+  { value: "oled", label: "OLED", Icon: MoonStar },
+]
+
+export function ThemeToggle({ theme, onChange }: { theme: Theme; onChange: (t: Theme) => void }) {
+  return (
+    <div role="radiogroup" aria-label="Colour theme" className="inline-flex gap-0.5 rounded-lg border p-0.5">
+      {THEME_ITEMS.map(({ value, label, Icon }) => {
+        const active = theme === value
+        return (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(value)}
+            className={cn(
+              "flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+              active ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Icon className="size-3.5" />
+            {label}
+          </button>
+        )
+      })}
+    </div>
   )
 }

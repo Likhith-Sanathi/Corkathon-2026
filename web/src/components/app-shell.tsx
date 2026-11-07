@@ -4,11 +4,12 @@ import dynamic from "next/dynamic"
 import { ReactLenis } from "lenis/react"
 import { useCallback, useEffect, useState } from "react"
 import { Loader2 } from "lucide-react"
-import { FilterControls, LayerControls, WeightControls } from "@/components/controls"
+import { FilterControls, LayerControls, ThemeToggle, WeightControls } from "@/components/controls"
 import { EmptyState, OutsideNotice, ScorePanel } from "@/components/score-panel"
 import { Separator } from "@/components/ui/separator"
 import { DEFAULT_FILTERS, LAYERS, type Basemap, type Filters, type LayerKey } from "@/lib/layers"
 import { DEFAULT_WEIGHTS } from "@/lib/scoring"
+import { applyTheme, useTheme, type Theme } from "@/lib/theme"
 import type { ScoreResult, Weights } from "@/lib/types"
 
 const SiteMap = dynamic(() => import("@/components/site-map"), {
@@ -27,10 +28,19 @@ export function AppShell() {
   const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS)
   const [layers, setLayers] = useState(initialLayers)
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
-  const [basemap, setBasemap] = useState<Basemap>("light")
+  // null = follow the theme (light basemap in light mode, dark otherwise) until the user picks one
+  const [basemapChoice, setBasemapChoice] = useState<Basemap | null>(null)
   const [result, setResult] = useState<ScoreResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const theme = useTheme()
+  const basemap: Basemap = basemapChoice ?? (theme === "light" ? "light" : "dark")
+
+  const changeTheme = useCallback((t: Theme) => {
+    applyTheme(t)
+    // Light/dark tiles follow the theme again; an explicit PDOK or OSM choice is kept.
+    setBasemapChoice((b) => (b === "light" || b === "dark" ? null : b))
+  }, [])
 
   // Score the pin whenever it moves or the weights change (debounced for slider drags).
   useEffect(() => {
@@ -84,7 +94,10 @@ export function AppShell() {
         <ReactLenis className="h-full overflow-y-auto overscroll-contain">
           <div className="space-y-6 p-5">
             <header className="space-y-1">
-              <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Corkathon 2026</p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Corkathon 2026</p>
+                <ThemeToggle theme={theme} onChange={changeTheme} />
+              </div>
               <h1 className="text-xl font-semibold tracking-tight">Data centre site scorer</h1>
               <p className="text-sm text-muted-foreground">
                 Drop a pin in the Netherlands to see how it scores on power, isolation, telecom, water and roads, after flood and
@@ -108,7 +121,7 @@ export function AppShell() {
             <Separator />
             <LayerControls layers={layers} onToggle={(k, on) => setLayers((s) => ({ ...s, [k]: on }))} />
             <Separator />
-            <FilterControls filters={filters} basemap={basemap} onFilters={setFilters} onBasemap={setBasemap} />
+            <FilterControls filters={filters} basemap={basemap} onFilters={setFilters} onBasemap={setBasemapChoice} />
             <p className="pb-2 text-xs leading-relaxed text-muted-foreground">
               Data: OpenStreetMap (power, water, roads, settlements, telecom), PDOK/Rijkswaterstaat flood risk zones, EMSC
               earthquakes 2000–2024.
@@ -118,7 +131,7 @@ export function AppShell() {
       </aside>
 
       <section className="relative order-1 min-h-0 flex-1 md:order-2">
-        <SiteMap layers={layers} filters={filters} basemap={basemap} pin={pin} result={shown} onPick={onPick} />
+        <SiteMap theme={theme} layers={layers} filters={filters} basemap={basemap} pin={pin} result={shown} onPick={onPick} />
         {!pin && (
           <div className="pointer-events-none absolute top-4 left-1/2 z-[1000] -translate-x-1/2 rounded-full border bg-background/90 px-4 py-1.5 text-sm whitespace-nowrap shadow-sm backdrop-blur">
             Click the map to drop a pin

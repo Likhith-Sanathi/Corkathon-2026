@@ -14,6 +14,7 @@ import {
   type Filters,
   type LayerKey,
 } from "@/lib/layers"
+import type { Theme } from "@/lib/theme"
 import type {
   FeatureCollection,
   FloodZone,
@@ -116,7 +117,12 @@ const WORLD: [number, number][] = [
   [-85, 180],
   [-85, -180],
 ]
-function OutsideMask({ dark }: { dark: boolean }) {
+const MASK: Record<Theme, { fill: string; opacity: number; border: string }> = {
+  light: { fill: "#0f172a", opacity: 0.32, border: "#475569" },
+  dark: { fill: "#000000", opacity: 0.55, border: "#cbd5e1" },
+  oled: { fill: "#000000", opacity: 0.78, border: "#e5e5e5" },
+}
+function OutsideMask({ theme }: { theme: Theme }) {
   const outline = useLayer<Outline>("nl_outline", true)
   const rings = useMemo(
     () => (outline ? outline.geometry.coordinates.map((poly) => poly[0].map(([x, y]) => [y, x] as [number, number])) : null),
@@ -128,16 +134,18 @@ function OutsideMask({ dark }: { dark: boolean }) {
       <Polygon
         positions={[WORLD, ...rings]}
         interactive={false}
-        pathOptions={{ stroke: false, fillColor: dark ? "#000000" : "#0f172a", fillOpacity: dark ? 0.55 : 0.32, fillRule: "evenodd" }}
+        pathOptions={{ stroke: false, fillColor: MASK[theme].fill, fillOpacity: MASK[theme].opacity, fillRule: "evenodd" }}
       />
       <Polygon
         positions={rings}
         interactive={false}
-        pathOptions={{ color: dark ? "#cbd5e1" : "#475569", weight: 1.2, opacity: 0.7, fill: false }}
+        pathOptions={{ color: MASK[theme].border, weight: 1.2, opacity: 0.7, fill: false }}
       />
     </Pane>
   )
 }
+
+const MARKER_RING: Record<Theme, string> = { light: "#ffffff", dark: "#1f1f22", oled: "#000000" }
 
 const pinIcon = L.divIcon({
   className: "",
@@ -148,6 +156,7 @@ const pinIcon = L.divIcon({
 
 // ---------- component ----------
 export type SiteMapProps = {
+  theme: Theme
   layers: Record<LayerKey, boolean>
   filters: Filters
   basemap: Basemap
@@ -156,7 +165,7 @@ export type SiteMapProps = {
   onPick: (lat: number, lon: number) => void
 }
 
-export default function SiteMap({ layers, filters, basemap, pin, result, onPick }: SiteMapProps) {
+export default function SiteMap({ theme, layers, filters, basemap, pin, result, onPick }: SiteMapProps) {
   const substations = useLayer<Substation[]>("substations", layers.substations)
   const lines = useLayer<PowerLine[]>("lines", layers.hv)
   const towers = useLayer<Tower[]>("towers", layers.hv)
@@ -169,13 +178,16 @@ export default function SiteMap({ layers, filters, basemap, pin, result, onPick 
   const municipalities = useLayer<FeatureCollection<Municipality>>("municipalities", layers.municipalities)
 
   const minKv = Number(filters.voltage)
+  // Marker outline matches the map background, so markers read as cut-outs in every theme.
+  const ring = MARKER_RING[theme]
+  const placeFill = theme === "light" ? "#475569" : "#a1a1aa"
 
   const substationStyle = useCallback(
     (s: Substation): PointStyle =>
       s.kv < minKv
         ? null
-        : { radius: s.kv >= 380 ? 6 : 4, color: "#fff", weight: 1, fillColor: s.kv >= 380 ? "#ea580c" : "#f59e0b", fillOpacity: 0.95 },
-    [minKv],
+        : { radius: s.kv >= 380 ? 6 : 4, color: ring, weight: 1, fillColor: s.kv >= 380 ? "#ea580c" : "#f59e0b", fillOpacity: 0.95 },
+    [minKv, ring],
   )
   const substationTip = useCallback((s: Substation) => titled(s.name, `${s.kv} kV substation`), [])
 
@@ -194,12 +206,12 @@ export default function SiteMap({ layers, filters, basemap, pin, result, onPick 
   const telecomStyle = useCallback(
     (t: TelecomSite): PointStyle => ({
       radius: t.type === "data_center" ? 6 : 3.5,
-      color: "#fff",
+      color: ring,
       weight: 1,
       fillColor: t.type === "data_center" ? "#059669" : "#34d399",
       fillOpacity: 0.95,
     }),
-    [],
+    [ring],
   )
   const telecomTip = useCallback(
     (t: TelecomSite) => titled(t.name, t.type === "data_center" ? "Data centre" : "Telecom exchange"),
@@ -210,14 +222,14 @@ export default function SiteMap({ layers, filters, basemap, pin, result, onPick 
     (w: WaterFeature): PointStyle => ({ radius: w.type === "lake" || w.type === "reservoir" ? 3 : 1.6, stroke: false, fillColor: "#0ea5e9", fillOpacity: 0.55 }),
     [],
   )
-  const junctionStyle = useCallback((): PointStyle => ({ radius: 3.5, color: "#fff", weight: 1, fillColor: "#8b5cf6", fillOpacity: 0.95 }), [])
+  const junctionStyle = useCallback((): PointStyle => ({ radius: 3.5, color: ring, weight: 1, fillColor: "#8b5cf6", fillOpacity: 0.95 }), [ring])
   const junctionTip = useCallback((j: Junction) => titled(j.name, "Motorway junction"), [])
 
   const minRank = PLACE_RANK[filters.minPlace]
   const placeStyle = useCallback(
     (p: Place): PointStyle =>
-      PLACE_RANK[p.type] < minRank ? null : { radius: 2 + p.w * 7, color: "#fff", weight: 1, fillColor: "#475569", fillOpacity: 0.75 },
-    [minRank],
+      PLACE_RANK[p.type] < minRank ? null : { radius: 2 + p.w * 7, color: ring, weight: 1, fillColor: placeFill, fillOpacity: 0.75 },
+    [minRank, ring, placeFill],
   )
   const placeTip = useCallback((p: Place) => titled(p.name, p.type), [])
 
@@ -257,7 +269,7 @@ export default function SiteMap({ layers, filters, basemap, pin, result, onPick 
       className="h-full w-full"
     >
       <TileLayer key={basemap} url={tile.url} attribution={tile.attribution} maxNativeZoom={tile.maxNativeZoom} maxZoom={19} />
-      <OutsideMask dark={!!tile.dark} />
+      <OutsideMask theme={theme} />
       <ZoomControl position="bottomright" />
       <ClickToPin onPick={onPick} />
       <FitToEvidence result={result} />
