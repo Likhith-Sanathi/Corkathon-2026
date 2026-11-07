@@ -2,12 +2,12 @@
 
 import { animate, AnimatePresence, motion } from "motion/react"
 import { useEffect, useRef } from "react"
-import { MapPin, ShieldAlert, Waves, X } from "lucide-react"
+import { Building2, LandPlot, MapPin, ShieldAlert, Waves, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { FACTOR_COLORS } from "@/lib/layers"
 import { FACTOR_LABELS, grade } from "@/lib/scoring"
-import type { ScoreResult } from "@/lib/types"
+import type { PlotInfo, ScoreResult } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 const TONE: Record<string, string> = {
@@ -124,6 +124,8 @@ export function ScorePanel({
         </div>
       </div>
 
+      {result.plot && <PlotSection plot={result.plot} />}
+
       <div className="space-y-4">
         <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Factors</h3>
         {result.factors.map((f) => (
@@ -180,6 +182,91 @@ export function ScorePanel({
         ))}
       </div>
     </motion.div>
+  )
+}
+
+const fmtKm = (km: number) => (km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`)
+const fmtArea = (m2: number) =>
+  m2 >= 10_000 ? `${(m2 / 10_000).toLocaleString("en-GB", { maximumFractionDigits: 2 })} ha` : `${m2.toLocaleString("en-GB")} m²`
+
+function PlotSection({ plot }: { plot: PlotInfo }) {
+  const park = plot.businessPark
+  return (
+    <div className="space-y-3">
+      <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Plot</h3>
+      <div className="flex gap-3 rounded-lg border p-3">
+        <LandPlot className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <div className="min-w-0 flex-1 space-y-0.5">
+          {plot.parcel ? (
+            <>
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-sm font-medium">Cadastral parcel</span>
+                <span className="text-sm font-semibold tabular-nums">{fmtArea(plot.parcel.areaM2)}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">{plot.parcel.id} · Kadaster, outlined on the map</p>
+            </>
+          ) : (
+            <>
+              <span className="text-sm font-medium">Cadastral parcel</span>
+              <p className="text-xs text-muted-foreground">{plot.parcelError ?? "No registered parcel at this point (likely water or public space)."}</p>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="flex gap-3 rounded-lg border p-3">
+        <Building2 className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <div className="min-w-0 flex-1 space-y-1">
+          {park ? (
+            <>
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="truncate text-sm font-medium">{park.name}</span>
+                <span className="shrink-0 text-xs text-muted-foreground">{park.municipality}</span>
+              </div>
+              <dl className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
+                <dt className="text-muted-foreground">Available now</dt>
+                <dd className="text-right font-medium tabular-nums">{park.haAvailable ? `${park.haAvailable} ha` : "None"}</dd>
+                {park.haNet !== null && (
+                  <>
+                    <dt className="text-muted-foreground">Park size (net)</dt>
+                    <dd className="text-right tabular-nums">{park.haNet} ha</dd>
+                  </>
+                )}
+                {park.priceMin !== null && (
+                  <>
+                    <dt className="text-muted-foreground">Land price</dt>
+                    <dd className="text-right tabular-nums">
+                      €{park.priceMin}
+                      {park.priceMax && park.priceMax !== park.priceMin ? `–${park.priceMax}` : ""}/m²
+                    </dd>
+                  </>
+                )}
+                {park.maxEnvCategory && (
+                  <>
+                    <dt className="text-muted-foreground">Max environmental category</dt>
+                    <dd className="text-right tabular-nums">{park.maxEnvCategory}</dd>
+                  </>
+                )}
+              </dl>
+              <p className="text-[11px] text-muted-foreground">Business park data: IBIS {park.year}</p>
+            </>
+          ) : (
+            <>
+              <span className="text-sm font-medium">Not on a business park</span>
+              <p className="text-xs text-muted-foreground">
+                Outside every registered business park (IBIS 2019), so the land is probably not zoned for industry.
+              </p>
+              {plot.nearestPark && (
+                <p className="text-xs">
+                  Nearest: <span className="font-medium">{plot.nearestPark.park.name}</span>, {fmtKm(plot.nearestPark.km)} away
+                  {" · "}
+                  {plot.nearestPark.park.haAvailable ? `${plot.nearestPark.park.haAvailable} ha available` : "fully taken"}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 

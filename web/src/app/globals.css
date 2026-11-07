@@ -203,3 +203,6 @@
 .dark .leaflet-container .leaflet-control-attribution a { color: oklch(0.88 0 0); }
 .dark .site-pin { background: oklch(0.97 0 0); box-shadow: 0 6px 16px rgb(0 0 0 / 0.6); }
 .dark .site-pin span { background: #000; }
+
+/* Kadaster parcel lines are black; flip them for dark themes. */
+.dark .parcel-wms { filter: invert(1) brightness(0.9); }

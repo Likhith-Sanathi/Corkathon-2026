@@ -1,14 +1,57 @@
-# Data Sources — Data Center Site Selection (Europe)
+# Data Sources — Data Centre Site Scorer (Netherlands)
 
-Each category has a free EU source. Most need no key, but ENTSO-E and Copernicus need a registration step.
+Every source below is free. None needs an API key or an account. The app only keeps features inside the Netherlands (PDOK national outline).
 
-| Category | Source | Access | Notes |
-|---|---|---|---|
-| Diverse power sources | **ENTSO-E Transparency Platform**: actual generation per production type. **[Global Power Plant Database](https://datasets.wri.org/datasets/global-power-plant-database?map=eyJhY3RpdmVMYXllckdyb3VwcyI6W3siZGF0YXNldElkIjoiNTM2MjNkZmQtM2RmNi00ZjE1LWEwOTEtNjc0NTdjZGI1NzFmIiwibGF5ZXJzIjpbIjJhNjk0Mjg5LWZlYzktNGJmZS1hNmQyLTU2YzM4NjRlYzM0OSJdfV0sImJhc2VtYXAiOiJsaWdodCIsImJvdW5kYXJpZXMiOmZhbHNlLCJib3VuZHMiOnsiYmJveCI6bnVsbCwib3B0aW9ucyI6e319LCJsYWJlbHMiOiJkYXJrIiwibGF5ZXJzUGFyc2VkIjpbWyIyYTY5NDI4OS1mZWM5LTRiZmUtYTZkMi01NmMzODY0ZWMzNDkiLHsiYWN0aXZlIjp0cnVlLCJsYXllclNvdXJjZSI6bnVsbCwib3BhY2l0eSI6MSwidmlzaWJpbGl0eSI6dHJ1ZSwiekluZGV4IjoxMX1dXSwidmlld1N0YXRlIjp7ImxhdGl0dWRlIjoyNi43MTY3MDY5ODU5NTQ3MTUsImxvbmdpdHVkZSI6MzMuOTE0NjI3OTgxMjIyLCJ6b29tIjozfX0%3D)** (WRI) for exact, site-level power-plant locations and capacity | Free token, requested by email to transparency@entsoe.eu; Global Power Plant Database is free, CC-BY-4.0, no key | ENTSO-E covers 60+ bidding zones — compute a diversity index (e.g. Herfindahl) on the mix, but it's country/zone-level, not site-level. Global Power Plant Database gives exact lat/long, MW capacity and fuel type per plant — use it to find the nearest generation source to a candidate site. |
-| Water | **EEA Waterbase**: water quantity (1901–2025, released July 2026) and water quality (1900–2025), via **[Discodata](https://discodata.eea.europa.eu)** | Free CSV/SQLite download; [Discodata](https://discodata.eea.europa.eu) endpoint for filtered queries | River flow, abstraction and water-scarcity indicators. Reporting varies by country, so check coverage per area. |
-| Natural calamity risk | **JRC Risk Data Hub API** (since November 2023) | Free, no key listed in the sources found | Multi-hazard, with exposure, vulnerability and historical losses across EU, EFTA and IPA countries. Also **EFAS** flood hazard maps (free, no restrictions) and **EFFIS** for wildfire. Auth and rate limits not yet tested. |
-| Crime | **[Eurostat](https://ec.europa.eu/eurostat/web/main/data/database)** `crim_gen` (national) and `crim_gen_reg` (NUTS 3) | Free, Eurostat API | Police-recorded offences by ICCS category. NUTS 3 regional coverage runs about 2008–2023. Coarse and not comparable everywhere: some countries are excluded from some offence types. |
-| Broadband | **[Digital Decade "Broadband Coverage in Europe 2024"](https://op.europa.eu/en/publication-detail/-/publication/57cb0655-4734-11f0-85ba-01aa75ed71a1/language-en)** (final dataset) | Free download, annual | Fixed, VHCN, NGA, mobile and rural coverage by country and NUTS 3. Static annual dataset, not a live API. The EU broadband-mapping.eu platform has QoS data; access not yet checked. |
-| Temperature | **Copernicus Climate Data Store, ERA5** reanalysis (hourly, about 0.25°) | Free account, then the `cdsapi` Python client; accept each dataset's terms | Historical and gridded. Forecasts come from other sources. |
-| Map data | **OpenStreetMap** (roads, buildings, power lines, amenities) | Free, Overpass API | ODbL licence, so check share-alike obligations for a commercial product. Coverage in rural areas varies. |
+| Used for | Source | Access | Licence | In the repo |
+|---|---|---|---|---|
+| Power, water, roads, isolation, telecom | **OpenStreetMap**, Geofabrik Netherlands extract | One-off download (`.osm.pbf`), filtered with `osmium` | ODbL | `power.csv`, `water.csv`, `roads.csv`, `isolation.csv`, `telecom.csv` |
+| Earthquake risk | **EMSC Seismic Portal**, FDSN event service | Free API, no key | See EMSC terms of use | `seismic.csv` |
+| Flood risk | **PDOK / Rijkswaterstaat**, natural risk zones: flooding (INSPIRE) | Free WFS / GML download, no key | CC0 | `flood.csv` |
+| Business parks: available land and prices | **IBIS Bedrijventerreinen** (Interprovinciaal Overleg) | Free download (`ibis.zip`, shapefile) | CC0 | `web/public/data/ibis.json` |
+| Plots: the parcel under a pin | **Kadaster BRK Kadastrale Kaart** via PDOK | Free API, no key, queried live | Open data | Not stored; fetched per pin |
+| Netherlands outline and municipalities | **PDOK Bestuurlijke Gebieden** (Kadaster) | Free WFS, no key | Open data | `web/public/data/nl_outline.json`, `municipalities.json` |
+| Basemaps | **Esri** Light/Dark Gray Canvas, **PDOK BRT Achtergrondkaart**, **OpenStreetMap** tiles | Free tile services, no key | Per provider's terms | Not stored |
 
+## Details
+
+### OpenStreetMap (Geofabrik extract)
+- Download: https://download.geofabrik.de/europe/netherlands-latest.osm.pbf
+- Filtered by tag into the five CSVs: `power=*`, `waterway=*` / `natural=water`, `highway=motorway/trunk`, `place=*`, and `telecom=*` / `man_made=mast`.
+- ODbL is share-alike, so check the attribution and share-alike obligations before commercial use.
+
+### EMSC Seismic Portal
+- API: `https://www.seismicportal.eu/fdsnws/event/1/query?starttime=2000-01-01&endtime=2024-12-31&minlatitude=50.5&maxlatitude=53.8&minlongitude=2.9&maxlongitude=7.5&format=text`
+- Covers every magnitude, 2000–2024. Events outside the Netherlands are dropped when the app's data is built.
+
+### PDOK flood risk zones
+- WFS: https://service.pdok.nl/rws/overstromingen-risicogebied/wfs/v1_0 (layer `overstromingen-risicogebied:risk_zone`, 82,822 zones, 2018 version)
+- Dataset page: https://data.overheid.nl/dataset/52349-natuurlijke-risico-zones---overstroming---risicogebied---ror--inspire-geharmoniseerd-
+- **Limitation:** `flood.csv` was made from a GML file holding only 20 sample zones (identical 2 km circles), not the full map. Rebuild it from the WFS before relying on the flood factor.
+
+### IBIS Bedrijventerreinen
+- Dataset: https://data.overheid.nl/dataset/ibis-bedrijventerreinen
+- Download: https://data.overheid.nl/sites/default/files/dataset/02e09429-3d8a-4c87-82d4-201c181b9998/resources/ibis.zip
+- Covers 3,881 business parks: gross, net and available hectares, land price range (€/m²) and maximum environmental category. Coordinates are in RD New (EPSG:28992), and `scripts/build_data.py` converts them.
+- **Limitation:** the national file is the **2019** edition.
+
+### Kadaster cadastral map (plots)
+- Parcel API (OGC API Features): `https://api.pdok.nl/kadaster/brk-kadastrale-kaart/ogc/v1/collections/perceel/items?bbox=<lon1>,<lat1>,<lon2>,<lat2>&f=json`
+- Parcel lines overlay (WMS): https://service.pdok.nl/kadaster/kadastralekaart/wms/v5_0 (layer `Perceel`)
+- Gives every parcel's outline, ID (municipality, section and number) and area. CORS is open, so it can be called from the browser.
+- **Limitation:** ownership, sale prices and for-sale status are not open data. They're paid per lookup from Kadaster.
+
+### PDOK Bestuurlijke Gebieden
+- WFS: https://service.pdok.nl/kadaster/bestuurlijkegebieden/wfs/v1_0 (layers `Landgebied` for the national outline and `Gemeentegebied` for municipalities)
+- Used to check that a pin is inside the Netherlands, to name its municipality, and to dim everything outside the country.
+
+### Basemaps
+- Esri: `https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}` (and `World_Dark_Gray_Base`)
+- PDOK BRT Achtergrondkaart: `https://service.pdok.nl/brt/achtergrondkaart/wmts/v2_0/standaard/EPSG:3857/{z}/{x}/{y}.png`
+- OpenStreetMap: `https://tile.openstreetmap.org/{z}/{x}/{y}.png`
+
+## Tried and not in use
+- **Ember monthly electricity generation:** country-level only. Removed from the repo.
+- **Digital Decade broadband coverage:** country-level only. Removed.
+- **EEA Waterbase** (water quantity and abstraction): national-only data for the Netherlands. Files no longer in the repo.
+- **Open-Meteo historical temperature:** a single point near Amsterdam. Temperature was dropped as a factor.
+- **CARTO basemaps:** now require an API key, so they were replaced by Esri and PDOK.

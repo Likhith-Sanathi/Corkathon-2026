@@ -23,6 +23,9 @@ PDOK_WFS = (
 )
 MUNICIPALITIES_URL = PDOK_WFS + "Gemeentegebied"
 COUNTRY_URL = PDOK_WFS + "Landgebied"
+# IBIS business parks (Interprovinciaal Overleg, CC0): every Dutch business park with
+# gross/net/available hectares, land prices and the maximum environmental category.
+IBIS_URL = "https://data.overheid.nl/sites/default/files/dataset/02e09429-3d8a-4c87-82d4-201c181b9998/resources/ibis.zip"
 
 csv.field_size_limit(sys.maxsize)
 
@@ -214,6 +217,107 @@ for f in gem["features"]:
         "geometry": {"type": "MultiPolygon", "coordinates": out},
     })
 
+# ---------- IBIS business parks ----------
+import struct  # noqa: E402
+import zipfile  # noqa: E402
+
+
+def rd_to_wgs84(x, y):
+    """Dutch RD New (EPSG:28992) to WGS84 lat/lon. Standard polynomial approximation, error < 1 m."""
+    dx, dy = (x - 155000) * 1e-5, (y - 463000) * 1e-5
+    k = [(0, 1, 3235.65389), (2, 0, -32.58297), (0, 2, -0.24750), (2, 1, -0.84978), (0, 3, -0.06550), (2, 2, -0.01709),
+         (1, 0, -0.00738), (4, 0, 0.00530), (2, 3, -0.00039), (4, 1, 0.00033), (1, 1, -0.00012)]
+    l = [(1, 0, 5260.52916), (1, 1, 105.94684), (1, 2, 2.45656), (3, 0, -0.81885), (1, 3, 0.05594), (3, 1, -0.05607),
+         (0, 1, 0.01199), (3, 2, -0.00256), (1, 4, 0.00128), (0, 2, 0.00022), (2, 0, -0.00022), (5, 0, 0.00026)]
+    lat = 52.15517440 + sum(c * dx ** p * dy ** q for p, q, c in k) / 3600
+    lon = 5.38720621 + sum(c * dx ** p * dy ** q for p, q, c in l) / 3600
+    return lat, lon
+
+
+def read_dbf(raw):
+    n, hlen, rlen = struct.unpack("<IHH", raw[4:12])
+    fields, off = [], 32
+    while raw[off] != 0x0D:
+        fields.append((raw[off:off + 11].split(b"\0")[0].decode("latin-1"), raw[off + 16]))
+        off += 32
+    rows = []
+    for i in range(n):
+        rec = raw[hlen + i * rlen: hlen + (i + 1) * rlen]
+        o, row = 1, {}
+        for name, ln in fields:
+            row[name] = rec[o:o + ln].decode("latin-1").replace("\0", "").strip()
+            o += ln
+        rows.append(row if rec[:1] != b"*" else None)
+    return rows
+
+
+def read_shp_polygons(raw):
+    """Yield a list of rings (each a list of (x, y)) per record of a polygon shapefile."""
+    off = 100
+    while off < len(raw):
+        _, words = struct.unpack(">II", raw[off:off + 8])
+        body = raw[off + 8: off + 8 + words * 2]
+        off += 8 + words * 2
+        if struct.unpack("<i", body[:4])[0] == 0:  # null shape
+            yield []
+            continue
+        nparts, npts = struct.unpack("<ii", body[36:44])
+        parts = list(struct.unpack(f"<{nparts}i", body[44:44 + 4 * nparts])) + [npts]
+        pts = struct.unpack(f"<{2 * npts}d", body[44 + 4 * nparts: 44 + 4 * nparts + 16 * npts])
+        yield [[(pts[2 * j], pts[2 * j + 1]) for j in range(parts[i], parts[i + 1])] for i in range(nparts)]
+
+
+def num(v):
+    try:
+        f = float(v)
+        return round(f, 2) if f >= 0 else None
+    except ValueError:  # '****' = not filled in
+        return None
+
+
+def signed_area(ring):
+    return sum(x1 * y2 - x2 * y1 for (x1, y1), (x2, y2) in zip(ring, ring[1:] + ring[:1])) / 2
+
+
+ibis_zip = os.path.join(CACHE, "ibis.zip")
+if not os.path.exists(ibis_zip):
+    print("downloading IBIS business parks ...")
+    subprocess.run(["curl", "-s", "-L", "-m", "300", "-o", ibis_zip, IBIS_URL], check=True)
+with zipfile.ZipFile(ibis_zip) as z:
+    dbf_rows = read_dbf(z.read("ibis.dbf"))
+    shapes = list(read_shp_polygons(z.read("ibis.shp")))
+
+ibis = {"type": "FeatureCollection", "features": []}
+for row, rings in zip(dbf_rows, shapes):
+    if not row or not rings:
+        continue
+    polys = []
+    for ring in rings:
+        ll = [[r5(lon), r5(lat)] for lat, lon in (rd_to_wgs84(x, y) for x, y in ring)]
+        ll = simplify(ll, 0.00008)
+        # Shapefile outer rings run clockwise in RD (negative signed area); holes run counter-clockwise.
+        if signed_area(ring) < 0 or not polys:
+            polys.append([ll])
+        else:
+            polys[-1].append(ll)
+    ibis["features"].append({
+        "type": "Feature",
+        "properties": {
+            "id": row["RIN_NUMMER"],
+            "name": row["PLAN_NAAM"].title(),
+            "place": row["KERN_NAAM"].title(),
+            "municipality": row["GEM_NAMEN"].title(),
+            "year": int(num(row["JAAR"]) or 0),
+            "haGross": num(row["HA_BRUTO"]),
+            "haNet": num(row["HA_NETTO"]),
+            "haAvailable": num(row["HA_TOTTUIT"]),  # immediately available to buy or lease
+            "priceMin": num(row["MN_VPRIJS"]) or None,  # land sale price, EUR per m2
+            "priceMax": num(row["MX_VPRIJS"]) or None,
+            "maxEnvCategory": row["MAX_MILIEU"] if row["MAX_MILIEU"] not in ("", "X") else None,
+        },
+        "geometry": {"type": "MultiPolygon", "coordinates": polys},
+    })
+
 os.makedirs(OUT, exist_ok=True)
 write("substations.json", substations)
 write("lines.json", lines)
@@ -225,5 +329,6 @@ write("telecom.json", telecom)
 write("seismic.json", seismic)
 write("flood.json", flood)
 write("municipalities.json", munis)
+write("ibis.json", ibis)
 write("nl_outline.json", {"type": "Feature", "properties": {"name": "Nederland"},
                           "geometry": {"type": "MultiPolygon", "coordinates": outline}})

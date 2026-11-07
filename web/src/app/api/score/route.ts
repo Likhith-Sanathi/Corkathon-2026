@@ -1,6 +1,7 @@
 import { DEFAULT_WEIGHTS, scoreLocation } from "@/lib/scoring"
 import { loadDataset } from "@/lib/server-data"
-import type { Weights } from "@/lib/types"
+import { fetchParcel, findBusinessPark, nearestBusinessPark } from "@/lib/plot"
+import type { PlotInfo, Weights } from "@/lib/types"
 
 type Body = { lat?: unknown; lon?: unknown; weights?: Partial<Record<keyof Weights, unknown>> }
 
@@ -29,5 +30,14 @@ export async function POST(request: Request) {
   if (!result) {
     return Response.json({ error: "That point is outside the Netherlands. Drop the pin inside the country." }, { status: 422 })
   }
-  return Response.json(result)
+
+  // The plot: business park from IBIS (local data) and the cadastral parcel (live from PDOK).
+  const businessPark = findBusinessPark(data, lat, lon)
+  const plot: PlotInfo = { parcel: null, businessPark, nearestPark: businessPark ? null : nearestBusinessPark(data, lat, lon) }
+  try {
+    plot.parcel = await fetchParcel(lat, lon)
+  } catch (e) {
+    plot.parcelError = e instanceof Error && e.name === "TimeoutError" ? "Parcel service timed out" : "Parcel service unavailable"
+  }
+  return Response.json({ ...result, plot })
 }

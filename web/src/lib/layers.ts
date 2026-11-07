@@ -12,6 +12,8 @@ export type LayerKey =
   | "places"
   | "seismic"
   | "municipalities"
+  | "parks"
+  | "parcels"
 
 export type LayerDef = {
   key: LayerKey
@@ -26,6 +28,8 @@ export type LayerDef = {
   legend?: { label: string; glyph?: GlyphKind; color?: string }[]
 }
 
+export const PARK_AVAILABLE = "#ec4899"
+export const PARK_FULL = "#94a3b8"
 export const POWER_380 = "#dc2626"
 export const POWER_HV = "#f59e0b"
 export const FLOOD_COLORS: Record<string, string> = { B: "#7dd3fc", D: "#3b82f6" }
@@ -87,6 +91,19 @@ export const LAYERS: LayerDef[] = [
     ],
   },
   { key: "seismic", label: "Earthquakes", hint: "seismic.csv", color: "#f87171", files: ["seismic"], defaultOn: false },
+  {
+    key: "parks",
+    label: "Business parks",
+    hint: "IBIS 2019",
+    color: PARK_AVAILABLE,
+    files: ["ibis"],
+    defaultOn: false,
+    legend: [
+      { color: PARK_AVAILABLE, label: "Land available" },
+      { color: PARK_FULL, label: "Fully taken" },
+    ],
+  },
+  { key: "parcels", label: "Cadastral parcels", hint: "Kadaster · zoom in", color: "#a3a3a3", files: [], defaultOn: false },
   { key: "municipalities", label: "Municipal borders", hint: "PDOK", color: "#94a3b8", files: ["municipalities"], defaultOn: false },
 ]
 

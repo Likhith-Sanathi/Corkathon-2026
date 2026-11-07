@@ -22,6 +22,41 @@ export type Municipality = {
 }
 export type FeatureCollection<F> = { type: "FeatureCollection"; features: F[] }
 
+/** A business park from IBIS (2019): available land, prices and the environmental category allowed. */
+export type BusinessParkProps = {
+  id: string
+  name: string
+  place: string
+  municipality: string
+  year: number
+  haGross: number | null
+  haNet: number | null
+  haAvailable: number | null
+  priceMin: number | null // land sale price, EUR per m²
+  priceMax: number | null
+  maxEnvCategory: string | null
+}
+export type BusinessPark = {
+  type: "Feature"
+  properties: BusinessParkProps
+  geometry: { type: "MultiPolygon"; coordinates: Ring[][] }
+}
+
+/** The cadastral parcel under a point (Kadaster, live from PDOK). */
+export type Parcel = {
+  id: string // e.g. "Uithuizermeeden M 41"
+  areaM2: number
+  geometry: { type: "MultiPolygon"; coordinates: Ring[][] }
+}
+
+export type PlotInfo = {
+  parcel: Parcel | null
+  parcelError?: string
+  businessPark: BusinessParkProps | null
+  /** Closest business park edge when the point is not inside one (within 15 km). */
+  nearestPark?: { park: BusinessParkProps; km: number } | null
+}
+
 export type Dataset = {
   substations: Substation[]
   lines: PowerLine[]
@@ -33,6 +68,7 @@ export type Dataset = {
   seismic: SeismicEvent[]
   flood: FeatureCollection<FloodZone>
   municipalities: FeatureCollection<Municipality>
+  ibis?: FeatureCollection<BusinessPark>
 }
 
 export type FactorKey = "power" | "isolation" | "telecom" | "water" | "roads"
@@ -65,4 +101,5 @@ export type ScoreResult = {
   factors: FactorResult[]
   risks: RiskResult[]
   points: EvidencePoint[]
+  plot?: PlotInfo
 }

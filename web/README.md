@@ -19,6 +19,15 @@ The **site score heatmap** comes from `scripts/build-grid.ts`. It scores every ~
 
 `scripts/build_data.py` reads `power.csv`, `water.csv`, `roads.csv`, `isolation.csv`, `telecom.csv`, `seismic.csv` and `flood.csv` from the repo root and writes compact JSON layers to `web/public/data/`. It also downloads the municipality boundaries from PDOK once (cached in `scripts/.cache/`), which the app uses to check that a pin is inside the Netherlands.
 
+## Plots
+
+Dropping a pin also returns the **plot** (`plot` in the `/api/score` response):
+
+- **Cadastral parcel:** looked up live from Kadaster's open parcel map on PDOK (`api.pdok.nl/kadaster/brk-kadastrale-kaart`, free, no key): parcel ID and area, outlined on the map. Ownership and sale prices are not open data.
+- **Business park:** from IBIS (Interprovinciaal Overleg, CC0), built into `public/data/ibis.json` by `scripts/build_data.py`: available hectares, land price range (€/m²) and maximum environmental category. When the pin is not inside a park, the nearest park within 15 km is returned. The national IBIS file is the **2019** edition.
+
+The map has a **Business parks** layer (pink where land is still available) and a **Cadastral parcels** overlay (PDOK WMS, from zoom 15).
+
 ## How it works
 
 - `POST /api/score` with `{ lat, lon, weights? }` returns the score, every sub-score, and the evidence. Points outside the Netherlands get a `422`.
@@ -48,3 +57,4 @@ Distance factors use `e^(−d/λ)`. Risk multiplies the result:
 - `flood.csv` holds 20 identical 2 km circles, not the real flood risk map, so the flood factor almost never triggers. Replace it with the full PDOK flood risk zones before relying on it.
 - Lines, rivers and roads are stored as one point per OSM way (the average of its vertices), so distances to long features are approximate.
 - Isolation uses OSM place points, not population counts.
+- Business park data (IBIS) is from 2019; availability and prices will have changed. Whether a specific parcel is for sale is not in any open dataset.

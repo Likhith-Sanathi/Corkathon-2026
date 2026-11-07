@@ -125,7 +125,7 @@ export function AppShell() {
             <FilterControls filters={filters} basemap={basemap} onFilters={setFilters} onBasemap={setBasemapChoice} />
             <p className="pb-2 text-xs leading-relaxed text-muted-foreground">
               Data: OpenStreetMap (power, water, roads, settlements, telecom), PDOK/Rijkswaterstaat flood risk zones, EMSC
-              earthquakes 2000–2024.
+              earthquakes 2000–2024, IBIS business parks (2019), Kadaster parcels via PDOK.
             </p>
           </div>
         </ReactLenis>

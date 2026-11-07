@@ -15,6 +15,7 @@ const FILES = [
   "seismic",
   "flood",
   "municipalities",
+  "ibis",
 ] as const
 
 let cache: Promise<Dataset> | null = null

@@ -3,13 +3,15 @@
 import "leaflet/dist/leaflet.css"
 import L from "leaflet"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { GeoJSON, MapContainer, Marker, Pane, Polygon, Polyline, TileLayer, useMap, useMapEvents, ZoomControl } from "react-leaflet"
+import { GeoJSON, MapContainer, Marker, Pane, Polygon, Polyline, TileLayer, useMap, useMapEvents, WMSTileLayer, ZoomControl } from "react-leaflet"
 import {
   BASEMAPS,
   FACTOR_COLORS,
   FLOOD_COLORS,
   FLOOD_FALLBACK,
   HEAT_RAMP,
+  PARK_AVAILABLE,
+  PARK_FULL,
   PLACE_RANK,
   POWER_380,
   POWER_HV,
@@ -22,6 +24,7 @@ import { loadSprites, type GlyphKind, type Sprites } from "@/lib/glyphs"
 import { normaliseWeights } from "@/lib/scoring"
 import type { Theme } from "@/lib/theme"
 import type {
+  BusinessPark,
   FeatureCollection,
   FloodZone,
   Junction,
@@ -183,6 +186,9 @@ const RAMP_LUT = (() => {
 const mercY = (lat: number) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360))
 const fromMercY = (y: number) => ((2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180) / Math.PI
 
+/** Strong at country zoom, fading towards plot level so parcels and the basemap stay readable. */
+const heatOpacity = (z: number) => Math.max(0.28, Math.min(0.72, 0.72 - (z - 11) * 0.11))
+
 /** Output pixels per grid cell (horizontally). Scores are interpolated between cells. */
 const HEAT_OVERSAMPLE = 2
 
@@ -321,8 +327,11 @@ function ScoreHeatmap({ weights, onDomain }: { weights: Weights; onDomain: (d: [
     const bounds = L.latLngBounds([meta.north - meta.rows * meta.dLat, meta.west], [meta.north, meta.west + meta.cols * meta.dLon])
     const canvas = document.createElement("canvas")
     canvasRef.current = canvas
-    const ov = new CanvasOverlay(canvas, bounds, { pane: "score-heat", opacity: 0.72, interactive: false }).addTo(map)
+    const ov = new CanvasOverlay(canvas, bounds, { pane: "score-heat", opacity: heatOpacity(map.getZoom()), interactive: false }).addTo(map)
+    const fade = () => ov.setOpacity(heatOpacity(map.getZoom()))
+    map.on("zoomend", fade)
     return () => {
+      map.off("zoomend", fade)
       ov.remove()
       canvasRef.current = null
       onDomain(null)
@@ -407,6 +416,7 @@ export default function SiteMap({ theme, weights, onHeatDomain, layers, filters,
   const seismic = useLayer<SeismicEvent[]>("seismic", layers.seismic)
   const flood = useLayer<FeatureCollection<FloodZone>>("flood", layers.flood)
   const municipalities = useLayer<FeatureCollection<Municipality>>("municipalities", layers.municipalities)
+  const parks = useLayer<FeatureCollection<BusinessPark>>("ibis", layers.parks)
 
   // Glyph sprites for the current theme (outline and shadow differ per theme).
   const [spriteSet, setSpriteSet] = useState<{ theme: Theme; sprites: Sprites } | null>(null)
@@ -514,6 +524,26 @@ export default function SiteMap({ theme, weights, onHeatDomain, layers, filters,
     [],
   )
 
+  const parkStyle = useCallback((f?: GeoJSON.Feature) => {
+    const available = ((f?.properties as BusinessPark["properties"] | undefined)?.haAvailable ?? 0) > 0
+    const c = available ? PARK_AVAILABLE : PARK_FULL
+    return { color: c, weight: 1.5, opacity: 0.9, fillColor: c, fillOpacity: available ? 0.22 : 0.08 }
+  }, [])
+  const parkEach = useCallback((f: GeoJSON.Feature, layer: L.Layer) => {
+    const p = f.properties as BusinessPark["properties"]
+    const lines = [`<b>${esc(p.name)}</b> · ${esc(p.municipality)}`]
+    if (p.haNet) lines.push(`${p.haNet} ha net${p.haAvailable ? `, <b>${p.haAvailable} ha available</b>` : ", fully taken"}`)
+    if (p.priceMin) lines.push(`Land €${p.priceMin}${p.priceMax && p.priceMax !== p.priceMin ? `–${p.priceMax}` : ""}/m²`)
+    if (p.maxEnvCategory) lines.push(`Max environmental category ${esc(p.maxEnvCategory)}`)
+    lines.push(`<span style="opacity:.7">IBIS ${p.year}</span>`)
+    layer.bindTooltip(lines.join("<br/>"), { sticky: true })
+  }, [])
+  const parcel = pin && result?.plot?.parcel ? result.plot.parcel : null
+  const parcelRings = useMemo(
+    () => parcel?.geometry.coordinates.map((poly) => poly.map((ring) => ring.map(([x, y]) => [y, x] as [number, number]))) ?? null,
+    [parcel],
+  )
+
   const tile = BASEMAPS[basemap]
   const evidence = useMemo(() => (result && pin ? result.points : []), [result, pin])
 
@@ -544,6 +574,28 @@ export default function SiteMap({ theme, weights, onHeatDomain, layers, filters,
       )}
       {flood && (
         <GeoJSON data={flood as unknown as GeoJSON.FeatureCollection} style={floodStyle} onEachFeature={floodEach} />
+      )}
+      {parks && (
+        <GeoJSON data={parks as unknown as GeoJSON.FeatureCollection} style={parkStyle} onEachFeature={parkEach} />
+      )}
+      {layers.parcels && (
+        <Pane name="parcels" style={{ zIndex: 345 }}>
+          <WMSTileLayer
+            url="https://service.pdok.nl/kadaster/kadastralekaart/wms/v5_0"
+            params={{ layers: "Perceel", format: "image/png", transparent: true, version: "1.3.0" }}
+            minZoom={15}
+            maxZoom={19}
+            className="parcel-wms"
+            attribution="Kadaster"
+          />
+        </Pane>
+      )}
+      {parcelRings && (
+        <Polygon
+          positions={parcelRings}
+          interactive={false}
+          pathOptions={{ color: theme === "light" ? "#0f172a" : "#ffffff", weight: 2.5, dashArray: "6 4", fillColor: "#ffffff", fillOpacity: 0.12 }}
+        />
       )}
 
       <PointLayer items={floodMarkers} styleFor={floodMarkerStyle} tooltipFor={floodMarkerTip} maxZoom={10} />
