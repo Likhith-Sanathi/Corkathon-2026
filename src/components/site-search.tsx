@@ -14,7 +14,7 @@ const SiteMap = dynamic(
   { ssr: false },
 );
 
-const EXAMPLE_PLACES = ["Vantaa, Finland", "Luleå, Sweden", "Galway, Ireland"];
+const EXAMPLE_PLACES = ["Eindhoven, Netherlands", "Groningen, Netherlands", "Assen, Netherlands"];
 
 type GeocodeResult = {
   displayName: string;

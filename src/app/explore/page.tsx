@@ -11,8 +11,10 @@ export default function ExplorePage() {
               Score a site
             </h1>
             <p className="text-muted-foreground">
-              Type a place in Europe to pull the evidence and see how it
-              scores.
+              Type a place to pull the evidence and see how it scores.
+              Isolation, water, and power currently use a detailed local
+              dataset for the Netherlands only — climate and risk cover all
+              of Europe.
             </p>
           </div>
 

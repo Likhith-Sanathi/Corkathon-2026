@@ -1,7 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { haversineKm, type LatLon } from "../geo";
-import type { NearestFeature } from "../overpass";
+
+export type NearestFeature = {
+  distanceKm: number;
+  name: string;
+  tags: Record<string, string>;
+  point: LatLon;
+};
 
 // Bounding box from netherlands-latest.osm.pbf's header — only used as a
 // fallback when we don't know the resolved country name (the box also

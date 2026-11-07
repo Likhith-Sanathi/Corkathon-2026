@@ -1,6 +1,5 @@
 import { MapPinOff, Droplets, Zap, Thermometer, ShieldAlert, Info } from "lucide-react";
 import { FACTOR_INFO, type FactorKey } from "@/lib/factor-info";
-import { ROLE_COLOR } from "@/lib/scoring/roles";
 
 const ICONS: Record<FactorKey, typeof MapPinOff> = {
   isolation: MapPinOff,
@@ -24,12 +23,9 @@ export function ExploreSidebar() {
               <li key={factor.key} className="flex gap-3">
                 <div
                   className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg"
-                  style={{ backgroundColor: `${ROLE_COLOR[factor.key]}1a` }}
+                  style={{ backgroundColor: `${factor.color}1a` }}
                 >
-                  <Icon
-                    className="size-4"
-                    style={{ color: ROLE_COLOR[factor.key] }}
-                  />
+                  <Icon className="size-4" style={{ color: factor.color }} />
                 </div>
                 <div className="flex flex-col gap-0.5">
                   <p className="text-sm font-medium">{factor.title}</p>
@@ -50,10 +46,13 @@ export function ExploreSidebar() {
         <Info className="size-3.5 shrink-0 translate-y-0.5" />
         <p>
           The overall score is an unweighted average of the five factors
-          above, each pulled live from public data. Treat it as a starting
-          point for comparison, not a final verdict — a factor marked{" "}
+          above. Isolation, water, and power are scored from a local
+          Netherlands dataset extract; climate and risk are pulled live.
+          Treat it as a starting point for comparison, not a final
+          verdict — a factor marked{" "}
           <span className="font-medium">N/A</span> means that data source
-          didn&apos;t respond, not that the risk is zero.
+          didn&apos;t respond or doesn&apos;t cover this location yet, not
+          that the risk is zero.
         </p>
       </div>
     </aside>

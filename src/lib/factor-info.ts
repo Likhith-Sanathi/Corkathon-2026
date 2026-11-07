@@ -5,26 +5,30 @@ export const FACTOR_INFO: {
   title: string;
   description: string;
   source: string;
+  color: string;
 }[] = [
   {
     key: "isolation",
     title: "Isolation",
     description:
       "How remote the site is from dense population centers — safety, security, and land availability.",
-    source: "OpenStreetMap",
+    source: "Local Netherlands OpenStreetMap extract",
+    color: "#7c3aed",
   },
   {
     key: "water",
     title: "Water availability",
     description:
       "Proximity to rivers and lakes, and regional water-stress levels for cooling.",
-    source: "OpenStreetMap",
+    source: "Local Netherlands OpenStreetMap extract",
+    color: "#0891b2",
   },
   {
     key: "power",
     title: "Power grid access",
     description: "Proximity to grid capacity and generation data.",
-    source: "OpenStreetMap",
+    source: "Local Netherlands OpenStreetMap extract",
+    color: "#d97706",
   },
   {
     key: "climate",
@@ -32,11 +36,13 @@ export const FACTOR_INFO: {
     description:
       "Ambient temperature and humidity as a proxy for free-air-cooling potential.",
     source: "Open-Meteo (ERA5 reanalysis)",
+    color: "#2563eb",
   },
   {
     key: "risk",
     title: "Natural disaster risk",
     description: "Seismic and flood risk for the site.",
     source: "EMSC Seismic Portal + Open-Meteo Elevation",
+    color: "#dc2626",
   },
 ];
