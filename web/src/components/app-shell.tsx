@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react"
 import { Loader2 } from "lucide-react"
 import { FilterControls, LayerControls, ThemeToggle, WeightControls } from "@/components/controls"
 import { EmptyState, OutsideNotice, ScorePanel } from "@/components/score-panel"
+import { SiteSearch } from "@/components/site-search"
 import { Separator } from "@/components/ui/separator"
 import { DEFAULT_FILTERS, HEAT_RAMP, LAYERS, type Basemap, type Filters, type LayerKey } from "@/lib/layers"
 import { DEFAULT_WEIGHTS } from "@/lib/scoring"
@@ -31,6 +32,7 @@ export function AppShell() {
   // null = follow the theme (light basemap in light mode, dark otherwise) until the user picks one
   const [basemapChoice, setBasemapChoice] = useState<Basemap | null>(null)
   const [result, setResult] = useState<ScoreResult | null>(null)
+  const [searchSites, setSearchSites] = useState<ScoreResult[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [heatDomain, setHeatDomain] = useState<[number, number] | null>(null)
@@ -106,6 +108,9 @@ export function AppShell() {
               </p>
             </header>
 
+            <SiteSearch weights={weights} onSelect={onPick} onResults={setSearchSites} />
+            <Separator />
+
             {error && <OutsideNotice message={error} />}
             {shown ? (
               <ScorePanel result={shown} loading={loading} onClear={clear} />
@@ -132,7 +137,18 @@ export function AppShell() {
       </aside>
 
       <section className="relative order-1 min-h-0 flex-1 md:order-2">
-        <SiteMap theme={theme} weights={weights} onHeatDomain={setHeatDomain} layers={layers} filters={filters} basemap={basemap} pin={pin} result={shown} onPick={onPick} />
+        <SiteMap
+          theme={theme}
+          weights={weights}
+          onHeatDomain={setHeatDomain}
+          layers={layers}
+          filters={filters}
+          basemap={basemap}
+          pin={pin}
+          result={shown}
+          searchSites={searchSites}
+          onPick={onPick}
+        />
         {layers.heatmap && heatDomain && (
           <div className="pointer-events-none absolute bottom-4 left-4 z-[1000] w-56 rounded-lg border bg-background/90 p-3 text-xs shadow-sm backdrop-blur">
             <div className="mb-2 flex items-center justify-between">
