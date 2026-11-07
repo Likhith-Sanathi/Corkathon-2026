@@ -127,7 +127,7 @@ export function AppShell() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -24 }}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute inset-x-2 bottom-2 z-[1001] h-[48dvh] overflow-hidden rounded-2xl border bg-background/80 shadow-2xl backdrop-blur-xl md:inset-x-auto md:top-3 md:bottom-3 md:left-3 md:h-auto md:w-[460px] xl:w-[520px]"
+            className="absolute inset-x-2 bottom-2 z-[1001] h-[48dvh] overflow-hidden glass rounded-2xl md:inset-x-auto md:top-3 md:bottom-3 md:left-3 md:h-auto md:w-[460px] xl:w-[520px]"
           >
             <ReactLenis className="h-full overflow-y-auto overscroll-contain">
               <div className="space-y-6 p-5">
@@ -199,7 +199,7 @@ export function AppShell() {
           onPick={onPick}
         />
         {layers.heatmap && heatDomain && (
-          <div className="pointer-events-none absolute bottom-4 left-4 z-[1000] w-56 rounded-lg border bg-background/90 p-3 text-xs shadow-sm backdrop-blur">
+          <div className="pointer-events-none absolute bottom-4 left-4 z-[1000] glass-chip w-56 rounded-xl p-3 text-xs">
             <div className="mb-2 flex items-center justify-between">
               <span className="font-medium">Site score</span>
               <span className="text-muted-foreground">updates with weights</span>
@@ -212,7 +212,7 @@ export function AppShell() {
           </div>
         )}
         {!pin && (
-          <div className="pointer-events-none absolute top-4 left-1/2 z-[1000] -translate-x-1/2 rounded-full border bg-background/90 px-4 py-1.5 text-sm whitespace-nowrap shadow-sm backdrop-blur">
+          <div className="pointer-events-none absolute top-4 left-1/2 z-[1000] -translate-x-1/2 glass-chip rounded-full px-4 py-1.5 text-sm whitespace-nowrap">
             Click the map to drop a pin
           </div>
         )}
@@ -221,7 +221,7 @@ export function AppShell() {
             variant="outline"
             size="sm"
             onClick={() => setPanelOpen(true)}
-            className="absolute top-4 left-4 z-[1000] bg-background/90 shadow-sm backdrop-blur"
+            className="glass-chip absolute top-4 left-4 z-[1000]"
           >
             <PanelLeftOpen /> Show panel
           </Button>
@@ -231,7 +231,7 @@ export function AppShell() {
             variant="outline"
             size="sm"
             onClick={() => setFeaturedPref(true)}
-            className="absolute top-4 right-4 z-[1000] hidden bg-background/90 shadow-sm backdrop-blur md:inline-flex"
+            className="glass-chip absolute top-4 right-4 z-[1000] hidden md:inline-flex"
           >
             <PanelRightOpen /> {rightTab === "chat" ? "Chat" : "Featured listings"}
           </Button>
@@ -246,7 +246,7 @@ export function AppShell() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 24 }}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute top-3 right-3 bottom-3 z-[1001] hidden w-[320px] overflow-hidden rounded-2xl border bg-background/80 shadow-2xl backdrop-blur-xl md:block xl:w-[340px]"
+            className="absolute top-3 right-3 bottom-3 z-[1001] hidden w-[320px] overflow-hidden rounded-2xl glass md:block xl:w-[340px]"
           >
             <div className="flex h-full flex-col">
               <header className="flex items-center justify-between gap-2 border-b px-3 py-2.5">
