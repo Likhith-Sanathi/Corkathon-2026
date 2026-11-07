@@ -185,6 +185,23 @@
   .search-pin { animation: none; }
 }
 
+/* ---------- festive snow ---------- */
+.snowflake {
+  position: absolute;
+  top: -12px;
+  border-radius: 9999px;
+  background: white;
+  box-shadow: 0 0 3px rgb(0 0 0 / 0.25);
+  animation: snow-fall linear infinite;
+}
+@keyframes snow-fall {
+  from { transform: translate(0, 0) rotate(0deg); }
+  to { transform: translate(var(--drift, 0px), 105vh) rotate(180deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .snowflake { display: none; }
+}
+
 /* ---------- OLED: true-black surfaces (applied together with .dark) ---------- */
 .dark.oled {
   --background: oklch(0 0 0);

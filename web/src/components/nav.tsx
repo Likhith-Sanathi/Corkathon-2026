@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { Radar } from "lucide-react"
+import { SnowToggle } from "@/components/snowfall"
 
 export function Nav() {
   return (
@@ -9,12 +10,15 @@ export function Nav() {
           <Radar className="size-5 text-primary" />
           Corkathon
         </Link>
-        <Link
-          href="/explore"
-          className="rounded-full bg-foreground px-4 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-85"
-        >
-          Explore
-        </Link>
+        <div className="flex items-center gap-2">
+          <SnowToggle />
+          <Link
+            href="/explore"
+            className="rounded-full bg-foreground px-4 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-85"
+          >
+            Explore
+          </Link>
+        </div>
       </div>
     </header>
   )
