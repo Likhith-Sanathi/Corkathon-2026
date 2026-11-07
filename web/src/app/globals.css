@@ -132,7 +132,8 @@
 /* ---------- map ---------- */
 .leaflet-container {
   font-family: var(--font-sans), system-ui, sans-serif;
-  background: var(--muted);
+  /* Shown briefly while tiles load after a zoom; close to the dimmed basemap so no bright rectangle flashes. */
+  background: #cfd1d3;
 }
 .leaflet-tooltip {
   border-radius: 8px;
@@ -198,7 +199,7 @@
 }
 
 /* ---------- map in dark themes ---------- */
-.dark .leaflet-container { background: oklch(0.18 0 0); }
+.dark .leaflet-container { background: #1b1b1c; }
 .dark.oled .leaflet-container { background: #000; }
 .dark.oled .leaflet-tile-pane { filter: brightness(0.7) contrast(1.3); }
 .dark .leaflet-tooltip {

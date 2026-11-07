@@ -124,7 +124,7 @@ export function AppShell() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -24 }}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-            className="order-2 h-[48dvh] shrink-0 border-t bg-background md:order-1 md:h-full md:w-[460px] xl:w-[520px] md:border-t-0 md:border-r"
+            className="absolute inset-x-2 bottom-2 z-[1001] h-[48dvh] overflow-hidden rounded-2xl border bg-background/80 shadow-2xl backdrop-blur-xl md:inset-x-auto md:top-3 md:bottom-3 md:left-3 md:h-auto md:w-[460px] xl:w-[520px]"
           >
             <ReactLenis className="h-full overflow-y-auto overscroll-contain">
               <div className="space-y-6 p-5">
@@ -181,7 +181,7 @@ export function AppShell() {
         )}
       </AnimatePresence>
 
-      <section className="relative order-1 min-h-0 flex-1 md:order-2">
+      <section className="absolute inset-0">
         <SiteMap
           theme={theme}
           weights={weights}
@@ -242,11 +242,7 @@ export function AppShell() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 24 }}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-            className={
-              wide
-                ? "order-3 hidden h-full w-[340px] shrink-0 border-l bg-background md:block"
-                : "absolute top-3 right-3 bottom-3 z-[1001] hidden w-[320px] overflow-hidden rounded-xl border bg-background shadow-xl md:block"
-            }
+            className="absolute top-3 right-3 bottom-3 z-[1001] hidden w-[320px] overflow-hidden rounded-2xl border bg-background/80 shadow-2xl backdrop-blur-xl md:block xl:w-[340px]"
           >
             <FeaturedListings
               weights={weights}

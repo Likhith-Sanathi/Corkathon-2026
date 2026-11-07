@@ -125,14 +125,15 @@ function PointLayer<T extends Pt>({
   const map = useMap()
   useEffect(() => {
     if (!items) return
-    const renderer = L.canvas({ padding: 0.5 })
+    const renderer = L.canvas({ padding: 0.15 })
+    const interactive = Boolean(tooltipFor || onClick) // decorative layers skip mouse hit-testing
     const group = L.layerGroup()
     const sized: [L.CircleMarker, number][] = []
     for (const it of items) {
       const style = styleFor(it)
       if (!style) continue
       const base = style.radius ?? 4
-      const opts = { renderer, ...style, radius: base * zoomScale(map.getZoom()), bubblingMouseEvents: !onClick }
+      const opts = { renderer, interactive, ...style, radius: base * zoomScale(map.getZoom()), bubblingMouseEvents: !onClick }
       const marker = style.sprite ? new GlyphMarker([it.lat, it.lon], opts) : L.circleMarker([it.lat, it.lon], opts)
       const tip = tooltipFor?.(it)
       if (tip) marker.bindTooltip(tip, { direction: "top", offset: [0, -4] })
@@ -183,6 +184,14 @@ function FitToEvidence({ result }: { result: ScoreResult | null }) {
 }
 
 /** Pans/zooms to fit every search result when a new search completes (same site list: keep the view). */
+/** Render children only from a minimum zoom (dense polygon layers are unreadable, and slow, further out). */
+function MinZoom({ min, children }: { min: number; children: React.ReactNode }) {
+  const map = useMap()
+  const [zoom, setZoom] = useState(() => map.getZoom())
+  useMapEvents({ zoomend: () => setZoom(map.getZoom()) })
+  return zoom >= min ? <>{children}</> : null
+}
+
 /** Keep Leaflet's size in sync when the layout around the map changes (e.g. the featured bar opens). */
 function AutoResize() {
   const map = useMap()
@@ -229,44 +238,24 @@ const RAMP_LUT = (() => {
   }
   return lut
 })()
-const mercY = (lat: number) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360))
 const fromMercY = (y: number) => ((2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180) / Math.PI
 
 /** Strong at country zoom, fading towards plot level so parcels and the basemap stay readable. */
 const heatOpacity = (z: number) => Math.max(0.28, Math.min(0.72, 0.72 - (z - 11) * 0.11))
 
-/** Output pixels per grid cell (horizontally). Scores are interpolated between cells. */
-const HEAT_OVERSAMPLE = 2
+type HeatField = { scores: Float32Array; lo: number; hi: number }
 
-/** An image overlay backed by a live <canvas>, so repaints skip PNG encoding entirely. */
-const CanvasOverlay = L.ImageOverlay.extend({
-  _initImage(this: { _url: HTMLCanvasElement; _image: HTMLCanvasElement; _zoomAnimated: boolean; options: L.ImageOverlayOptions }) {
-    const el = (this._image = this._url)
-    L.DomUtil.addClass(el, "leaflet-image-layer")
-    if (this._zoomAnimated) L.DomUtil.addClass(el, "leaflet-zoom-animated")
-    if (this.options.className) L.DomUtil.addClass(el, this.options.className)
-    el.onselectstart = L.Util.falseFn
-    el.onmousemove = L.Util.falseFn
-  },
-}) as unknown as new (canvas: HTMLCanvasElement, bounds: L.LatLngBounds, options: L.ImageOverlayOptions) => L.ImageOverlay
-
-/**
- * Combine the precomputed factor scores with the weights and paint them into `canvas`,
- * bilinearly interpolating between cells in Web Mercator. Returns the colour range used.
- */
-function paintHeatmap(canvas: HTMLCanvasElement, { meta, bytes }: Grid, weights: Weights): [number, number] {
-  const { cols, rows, north, dLat, dLon } = meta
-  const n = cols * rows
+/** Combine the precomputed factor scores with the weights: one score per grid cell (NaN outside the Netherlands). */
+function scoreField({ meta, bytes }: Grid, weights: Weights): HeatField {
+  const n = meta.cols * meta.rows
   const w = normaliseWeights(weights)
   // Planar layout: field k occupies bytes [k*n, (k+1)*n).
   const terms = meta.fields.flatMap((f, k) => (f in w ? [[k * n, w[f as keyof Weights]] as const] : []))
   const riskOff = meta.fields.indexOf("risk") * n
-
-  // 1. Score every cell (NaN outside the Netherlands).
   const scores = new Float32Array(n)
   const valid = new Float32Array(meta.cellsInside)
   let nv = 0
-  for (let i = 0; i < scores.length; i++) {
+  for (let i = 0; i < n; i++) {
     if (bytes[i] === GRID_NODATA) {
       scores[i] = NaN
       continue
@@ -278,46 +267,57 @@ function paintHeatmap(canvas: HTMLCanvasElement, { meta, bytes }: Grid, weights:
   }
   // Stretch the colours over the 2nd–98th percentile so the gradient uses its full range.
   const sorted = valid.subarray(0, nv).sort()
-  const lo = sorted[Math.floor(nv * 0.02)]
-  const hi = sorted[Math.floor(nv * 0.98)]
-  const scale = 255 / (hi - lo || 1)
+  return { scores, lo: sorted[Math.floor(nv * 0.02)], hi: sorted[Math.floor(nv * 0.98)] }
+}
 
-  // 2. Output size: square pixels in Web Mercator.
-  const yN = mercY(north)
-  const yS = mercY(north - rows * dLat)
-  const W = cols * HEAT_OVERSAMPLE
-  const H = Math.round((W * (yN - yS)) / ((cols * dLon * Math.PI) / 180))
-  if (canvas.width !== W || canvas.height !== H) {
-    canvas.width = W
-    canvas.height = H
+/**
+ * Paint one 256 px map tile of the heatmap, bilinearly interpolating between grid cells.
+ * Drawn at 128 px (256 at country zoom) and scaled up smoothly by the browser.
+ */
+function drawHeatTile(canvas: HTMLCanvasElement, coords: L.Coords, { meta }: Grid, field: HeatField) {
+  const { cols, rows, north, west, dLat, dLon } = meta
+  const res = coords.z <= 8 ? 256 : 128
+  if (canvas.width !== res) {
+    canvas.width = res
+    canvas.height = res
   }
+  const ctx = canvas.getContext("2d")!
+  ctx.clearRect(0, 0, res, res)
 
-  // Precompute the source cell and blend weight for every output column and row.
-  const c0 = new Int32Array(W)
-  const fx = new Float32Array(W)
-  for (let i = 0; i < W; i++) {
-    const gx = ((i + 0.5) / W) * cols - 0.5
+  const world = 256 * 2 ** coords.z
+  const lonAt = (px: number) => (px / world) * 360 - 180
+  const latAt = (py: number) => fromMercY(Math.PI * (1 - (2 * py) / world))
+  const x0 = coords.x * 256
+  const y0 = coords.y * 256
+  if (lonAt(x0 + 256) < west || lonAt(x0) > west + cols * dLon || latAt(y0 + 256) > north || latAt(y0) < north - rows * dLat) return
+
+  const step = 256 / res
+  const c0 = new Int32Array(res)
+  const fx = new Float32Array(res)
+  for (let i = 0; i < res; i++) {
+    const gx = (lonAt(x0 + (i + 0.5) * step) - west) / dLon - 0.5
     c0[i] = Math.floor(gx)
     fx[i] = gx - c0[i]
   }
-
-  // 3. Bilinear sample, ignoring cells outside the country (their weight fades the edge out).
-  const ctx = canvas.getContext("2d")!
-  const img = ctx.createImageData(W, H)
-  const px = img.data
+  const { scores, lo, hi } = field
+  const scale = 255 / (hi - lo || 1)
   const at = (r: number, c: number) => (r < 0 || r >= rows || c < 0 || c >= cols ? NaN : scores[r * cols + c])
-  for (let j = 0; j < H; j++) {
-    const lat = fromMercY(yN + ((yS - yN) * (j + 0.5)) / H)
-    const gy = (north - lat) / dLat - 0.5
+  const img = ctx.createImageData(res, res)
+  const px = img.data
+  let drawn = false
+  for (let j = 0; j < res; j++) {
+    const gy = (north - latAt(y0 + (j + 0.5) * step)) / dLat - 0.5
     const r0 = Math.floor(gy)
+    if (r0 < -1 || r0 >= rows) continue
     const fy = gy - r0
-    for (let i = 0; i < W; i++) {
+    for (let i = 0; i < res; i++) {
       const c = c0[i]
+      if (c < -1 || c >= cols) continue
       const ax = fx[i]
       let acc = 0
       let ws = 0
       const v00 = at(r0, c), v01 = at(r0, c + 1), v10 = at(r0 + 1, c), v11 = at(r0 + 1, c + 1)
-      // NaN !== NaN, so `v === v` skips cells outside the country.
+      // NaN !== NaN, so `v === v` skips cells outside the country (their weight fades the edge out).
       let q = (1 - ax) * (1 - fy)
       if (v00 === v00) {
         acc += q * v00
@@ -340,22 +340,33 @@ function paintHeatmap(canvas: HTMLCanvasElement, { meta, bytes }: Grid, weights:
       }
       if (ws < 0.02) continue // transparent
       const t = Math.max(0, Math.min(255, Math.round((acc / ws - lo) * scale))) * 3
-      const p = (j * W + i) * 4
+      const p = (j * res + i) * 4
       px[p] = RAMP_LUT[t]
       px[p + 1] = RAMP_LUT[t + 1]
       px[p + 2] = RAMP_LUT[t + 2]
       px[p + 3] = Math.min(255, ws * 420)
+      drawn = true
     }
   }
-  ctx.putImageData(img, 0, 0)
-  return [lo, hi]
+  if (drawn) ctx.putImageData(img, 0, 0)
 }
 
-/** Live score heatmap. Repaints on the next animation frame after a weight change. */
+type HeatTileLayer = L.GridLayer & { _draw?: (canvas: HTMLCanvasElement, coords: L.Coords) => void }
+/** A tile layer whose tiles are canvases painted from the score field (see drawHeatTile). */
+const HeatTiles = L.GridLayer.extend({
+  createTile(this: HeatTileLayer, coords: L.Coords) {
+    const canvas = document.createElement("canvas")
+    this._draw?.(canvas, coords)
+    return canvas
+  },
+}) as unknown as new (options: L.GridLayerOptions) => HeatTileLayer
+
+/** Live score heatmap as map tiles. Only visible tiles are drawn; weight changes repaint them in place. */
 function ScoreHeatmap({ weights, onDomain }: { weights: Weights; onDomain: (d: [number, number] | null) => void }) {
   const map = useMap()
   const [grid, setGrid] = useState<Grid | null>(null)
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const layerRef = useRef<HeatTileLayer | null>(null)
+  const fieldRef = useRef<HeatField | null>(null)
 
   useEffect(() => {
     let live = true
@@ -365,30 +376,41 @@ function ScoreHeatmap({ weights, onDomain }: { weights: Weights; onDomain: (d: [
     }
   }, [])
 
-  // Create the overlay once the grid is known; remove it when the layer is switched off.
+  // Create the tile layer once the grid is known; remove it when the layer is switched off.
   useEffect(() => {
     if (!grid) return
     if (!map.getPane("score-heat")) map.createPane("score-heat").style.zIndex = "340"
     const { meta } = grid
-    const bounds = L.latLngBounds([meta.north - meta.rows * meta.dLat, meta.west], [meta.north, meta.west + meta.cols * meta.dLon])
-    const canvas = document.createElement("canvas")
-    canvasRef.current = canvas
-    const ov = new CanvasOverlay(canvas, bounds, { pane: "score-heat", opacity: heatOpacity(map.getZoom()), interactive: false }).addTo(map)
-    const fade = () => ov.setOpacity(heatOpacity(map.getZoom()))
+    const layer = new HeatTiles({
+      pane: "score-heat",
+      opacity: heatOpacity(map.getZoom()),
+      bounds: L.latLngBounds([meta.north - meta.rows * meta.dLat, meta.west], [meta.north, meta.west + meta.cols * meta.dLon]),
+      updateWhenZooming: false,
+      keepBuffer: 2,
+    })
+    layer._draw = (canvas, coords) => fieldRef.current && drawHeatTile(canvas, coords, grid, fieldRef.current)
+    layer.addTo(map)
+    layerRef.current = layer
+    const fade = () => layer.setOpacity(heatOpacity(map.getZoom()))
     map.on("zoomend", fade)
     return () => {
       map.off("zoomend", fade)
-      ov.remove()
-      canvasRef.current = null
+      layer.remove()
+      layerRef.current = null
       onDomain(null)
     }
   }, [grid, map, onDomain])
 
-  // Repaint when the weights change; rapid slider moves collapse into one paint per frame.
+  // Recompute the field when the weights change and repaint the tiles on screen (one paint per frame).
   useEffect(() => {
-    if (!grid || !canvasRef.current) return
-    const canvas = canvasRef.current
-    const frame = requestAnimationFrame(() => onDomain(paintHeatmap(canvas, grid, weights)))
+    if (!grid) return
+    const frame = requestAnimationFrame(() => {
+      const field = scoreField(grid, weights)
+      fieldRef.current = field
+      const layer = layerRef.current as (HeatTileLayer & { _tiles?: Record<string, { el: HTMLCanvasElement; coords: L.Coords }> }) | null
+      for (const t of Object.values(layer?._tiles ?? {})) drawHeatTile(t.el, t.coords, grid, field)
+      onDomain([field.lo, field.hi])
+    })
     return () => cancelAnimationFrame(frame)
   }, [grid, weights, onDomain])
 
@@ -410,6 +432,9 @@ const MASK: Record<Theme, { fill: string; opacity: number; border: string }> = {
 }
 function OutsideMask({ theme }: { theme: Theme }) {
   const outline = useLayer<Outline>("nl_outline", true)
+  // Drawn with SVG covering 5× the viewport: a canvas only spans the screen (+10%), so zooming out
+  // briefly showed an undimmed rectangle around it.
+  const renderer = useMemo(() => L.svg({ padding: 2 }), [])
   const rings = useMemo(
     () => (outline ? outline.geometry.coordinates.map((poly) => poly[0].map(([x, y]) => [y, x] as [number, number])) : null),
     [outline],
@@ -420,12 +445,12 @@ function OutsideMask({ theme }: { theme: Theme }) {
       <Polygon
         positions={[WORLD, ...rings]}
         interactive={false}
-        pathOptions={{ stroke: false, fillColor: MASK[theme].fill, fillOpacity: MASK[theme].opacity, fillRule: "evenodd" }}
+        pathOptions={{ renderer, stroke: false, fillColor: MASK[theme].fill, fillOpacity: MASK[theme].opacity, fillRule: "evenodd" }}
       />
       <Polygon
         positions={rings}
         interactive={false}
-        pathOptions={{ color: MASK[theme].border, weight: 1.2, opacity: 0.7, fill: false }}
+        pathOptions={{ renderer, color: MASK[theme].border, weight: 1.2, opacity: 0.7, fill: false }}
       />
     </Pane>
   )
@@ -665,15 +690,19 @@ export default function SiteMap({ theme, weights, onHeatDomain, layers, filters,
         <GeoJSON data={flood as unknown as GeoJSON.FeatureCollection} style={floodStyle} onEachFeature={floodEach} />
       )}
       {parks && (
-        <GeoJSON data={parks as unknown as GeoJSON.FeatureCollection} style={parkStyle} onEachFeature={parkEach} />
+        <MinZoom min={9}>
+          <GeoJSON data={parks as unknown as GeoJSON.FeatureCollection} style={parkStyle} onEachFeature={parkEach} />
+        </MinZoom>
       )}
       {listings && (
-        <GeoJSON
-          data={listings as unknown as GeoJSON.FeatureCollection}
-          style={listingStyle}
-          onEachFeature={listingEach}
-          bubblingMouseEvents={false}
-        />
+        <MinZoom min={12}>
+          <GeoJSON
+            data={listings as unknown as GeoJSON.FeatureCollection}
+            style={listingStyle}
+            onEachFeature={listingEach}
+            bubblingMouseEvents={false}
+          />
+        </MinZoom>
       )}
       <PointLayer items={listingMarkers} styleFor={listingMarkerStyle} tooltipFor={listingTip} onClick={pickListing} maxZoom={11} />
       {layers.parcels && (

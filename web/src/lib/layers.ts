@@ -109,7 +109,7 @@ export const LAYERS: LayerDef[] = [
   {
     key: "parks",
     label: "Business parks",
-    hint: "IBIS 2019",
+    hint: "IBIS 2019 · zoom in",
     color: PARK_AVAILABLE,
     files: ["ibis"],
     defaultOn: false,
