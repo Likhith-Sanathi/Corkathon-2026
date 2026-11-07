@@ -34,6 +34,7 @@ type FactorResult = {
 
 type SiteScore = {
   overallScore: number | null;
+  confidence: number;
   factors: FactorResult[];
   markers: Marker[];
 };
@@ -226,11 +227,18 @@ export function SiteSearch() {
                 {status.site.displayName}
               </CardTitle>
               {status.state === "success" && (
-                <div className={`text-2xl font-semibold ${scoreColor(status.score.overallScore)}`}>
-                  {status.score.overallScore != null
-                    ? Math.round(status.score.overallScore)
-                    : "—"}
-                  <span className="text-sm font-normal text-muted-foreground">/100</span>
+                <div className="text-right">
+                  <div className={`text-2xl font-semibold ${scoreColor(status.score.overallScore)}`}>
+                    {status.score.overallScore != null
+                      ? Math.round(status.score.overallScore)
+                      : "—"}
+                    <span className="text-sm font-normal text-muted-foreground">/100</span>
+                  </div>
+                  {status.score.confidence < 1 && (
+                    <p className="text-[11px] text-muted-foreground">
+                      {Math.round(status.score.confidence * 100)}% of weighted factors scored
+                    </p>
+                  )}
                 </div>
               )}
             </div>

@@ -10,6 +10,13 @@ const ICONS: Record<FactorKey, typeof MapPinOff> = {
   risk: ShieldAlert,
 };
 
+// climate has no map markers, so it isn't part of ROLE_COLOR — give it its
+// own color here instead of adding a marker role that doesn't exist.
+const FACTOR_COLOR: Record<FactorKey, string> = {
+  ...ROLE_COLOR,
+  climate: "#2563eb",
+};
+
 export function ExploreSidebar() {
   return (
     <aside className="flex flex-col gap-6 lg:sticky lg:top-24 lg:self-start">
@@ -24,11 +31,11 @@ export function ExploreSidebar() {
               <li key={factor.key} className="flex gap-3">
                 <div
                   className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg"
-                  style={{ backgroundColor: `${ROLE_COLOR[factor.key]}1a` }}
+                  style={{ backgroundColor: `${FACTOR_COLOR[factor.key]}1a` }}
                 >
                   <Icon
                     className="size-4"
-                    style={{ color: ROLE_COLOR[factor.key] }}
+                    style={{ color: FACTOR_COLOR[factor.key] }}
                   />
                 </div>
                 <div className="flex flex-col gap-0.5">
@@ -49,11 +56,14 @@ export function ExploreSidebar() {
       <div className="flex gap-2.5 rounded-lg border bg-muted/40 px-4 py-3 text-xs text-muted-foreground">
         <Info className="size-3.5 shrink-0 translate-y-0.5" />
         <p>
-          The overall score is an unweighted average of the five factors
-          above, each pulled live from public data. Treat it as a starting
-          point for comparison, not a final verdict — a factor marked{" "}
+          The overall score is a weighted blend of the five factors above
+          (power and water count most, isolation least), each pulled live
+          from public data — power also folds in the host country&apos;s
+          generation mix from Ember. Treat it as a starting point for
+          comparison, not a final verdict — a factor marked{" "}
           <span className="font-medium">N/A</span> means that data source
-          didn&apos;t respond, not that the risk is zero.
+          didn&apos;t respond, not that the risk is zero, and a score shown
+          below 100% confidence means part of the weight is missing data.
         </p>
       </div>
     </aside>
