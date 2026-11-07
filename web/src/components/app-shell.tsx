@@ -251,7 +251,7 @@ export function AppShell() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 24 }}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute top-3 right-3 bottom-3 z-[1001] hidden w-[320px] overflow-hidden rounded-2xl border bg-background/80 shadow-2xl backdrop-blur-xl md:block xl:w-[340px]"
+            className="absolute top-3 right-3 bottom-3 z-[1001] hidden w-[360px] overflow-hidden rounded-2xl border bg-background/80 shadow-2xl backdrop-blur-xl md:block lg:w-[380px] xl:w-[420px]"
           >
             <div className="flex h-full flex-col">
               <header className="flex items-center justify-between gap-2 border-b px-3 py-2.5">
