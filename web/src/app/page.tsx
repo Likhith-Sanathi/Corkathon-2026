@@ -1,4 +1,4 @@
-import { ChatWidget } from "@/components/chat-widget"
+import { FloatingChat } from "@/components/chat-panel"
 import { DataSources } from "@/components/data-sources"
 import { FactorsSection } from "@/components/factors-section"
 import { Hero } from "@/components/hero"
@@ -16,7 +16,7 @@ export default function Home() {
         <FactorsSection />
         <DataSources />
       </main>
-      <ChatWidget />
+      <FloatingChat />
     </SmoothScroll>
   )
 }

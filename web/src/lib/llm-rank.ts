@@ -13,6 +13,29 @@ export type ChatMessage = { role: "system" | "user" | "assistant"; content: stri
  * this degrades to "no AI answer" rather than breaking.
  */
 export async function callOpenRouter(messages: ChatMessage[], temperature = 0.3): Promise<string | null> {
+  const result = await callOpenRouterWithTools(messages, undefined, temperature)
+  return result?.content ?? null
+}
+
+export type ToolDef = { type: "function"; function: { name: string; description: string; parameters: Record<string, unknown> } }
+export type ToolCall = { id: string; type: "function"; function: { name: string; arguments: string } }
+/** Any message in an OpenAI/OpenRouter-style tool-calling conversation, including the assistant's
+ *  own tool-call message and the tool's result message that follows it. */
+export type OpenRouterMessage =
+  | ChatMessage
+  | { role: "assistant"; content: string | null; tool_calls: ToolCall[] }
+  | { role: "tool"; tool_call_id: string; content: string }
+
+/**
+ * Same model and degrade-to-null behaviour as callOpenRouter, but returns the raw assistant
+ * message (content + any tool calls) instead of just the text, for callers that need to act on
+ * a tool call before producing a final answer.
+ */
+export async function callOpenRouterWithTools(
+  messages: OpenRouterMessage[],
+  tools?: ToolDef[],
+  temperature = 0.3,
+): Promise<{ content: string | null; toolCalls: ToolCall[] } | null> {
   const apiKey = process.env.OPENROUTER_API_KEY
   if (!apiKey) return null
 
@@ -20,13 +43,20 @@ export async function callOpenRouter(messages: ChatMessage[], temperature = 0.3)
     const res = await fetch(OPENROUTER_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: process.env.OPENROUTER_MODEL ?? DEFAULT_MODEL, messages, temperature }),
+      body: JSON.stringify({
+        model: process.env.OPENROUTER_MODEL ?? DEFAULT_MODEL,
+        messages,
+        temperature,
+        ...(tools?.length && { tools, tool_choice: "auto" }),
+      }),
       signal: AbortSignal.timeout(20000),
     })
     if (!res.ok) return null
 
-    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] }
-    return data.choices?.[0]?.message?.content?.trim() ?? null
+    const data = (await res.json()) as { choices?: { message?: { content?: string | null; tool_calls?: ToolCall[] } }[] }
+    const msg = data.choices?.[0]?.message
+    if (!msg) return null
+    return { content: msg.content?.trim() ?? null, toolCalls: msg.tool_calls ?? [] }
   } catch {
     return null
   }

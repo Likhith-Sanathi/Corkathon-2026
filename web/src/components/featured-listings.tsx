@@ -3,8 +3,7 @@
 import { ReactLenis } from "lenis/react"
 import { AnimatePresence, motion } from "motion/react"
 import { useEffect, useMemo, useState } from "react"
-import { BadgeEuro, Clock, Loader2, Maximize2, PanelRightClose, Trophy } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { BadgeEuro, Clock, Loader2, Maximize2, Trophy } from "lucide-react"
 import { LISTING_COLORS } from "@/lib/layers"
 import { GRADE_HEX, grade } from "@/lib/scoring"
 import type { FeaturedItem, FeaturedSection, Weights } from "@/lib/types"
@@ -81,12 +80,10 @@ export function FeaturedListings({
   weights,
   selectedId,
   onSelect,
-  onClose,
 }: {
   weights: Weights
   selectedId: string | null
   onSelect: (lat: number, lon: number) => void
-  onClose: () => void
 }) {
   const [sections, setSections] = useState<FeaturedSection[] | null>(null)
   const [error, setError] = useState(false)
@@ -117,15 +114,7 @@ export function FeaturedListings({
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-start justify-between gap-2 border-b px-4 py-3">
-        <div>
-          <h2 className="text-sm font-semibold tracking-tight">Featured listings</h2>
-          <p className="text-[11px] text-muted-foreground">Plots for sale · synthetic demo data</p>
-        </div>
-        <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Hide featured listings">
-          <PanelRightClose />
-        </Button>
-      </header>
+      <p className="px-4 pt-3 text-[11px] text-muted-foreground">Plots for sale · synthetic demo data</p>
       <ReactLenis className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="space-y-5 p-4">
           {!sections && !error && (

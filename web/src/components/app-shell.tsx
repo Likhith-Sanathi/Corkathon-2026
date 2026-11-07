@@ -4,18 +4,20 @@ import dynamic from "next/dynamic"
 import { ReactLenis } from "lenis/react"
 import { AnimatePresence, motion } from "motion/react"
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react"
-import { Loader2, PanelLeftClose, PanelLeftOpen, PanelRightOpen } from "lucide-react"
-import { ChatWidget } from "@/components/chat-widget"
+import { Loader2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react"
+import { ChatPanel } from "@/components/chat-panel"
 import { FilterControls, LayerControls, ThemeToggle, WeightControls } from "@/components/controls"
 import { FeaturedListings } from "@/components/featured-listings"
 import { Button } from "@/components/ui/button"
 import { EmptyState, OutsideNotice, ScorePanel } from "@/components/score-panel"
 import { SiteSearch } from "@/components/site-search"
+import { SnowToggle } from "@/components/snowfall"
 import { Separator } from "@/components/ui/separator"
 import { DEFAULT_FILTERS, HEAT_RAMP, LAYERS, type Basemap, type Filters, type LayerKey } from "@/lib/layers"
 import { DEFAULT_WEIGHTS } from "@/lib/scoring"
 import { applyTheme, useTheme, type Theme } from "@/lib/theme"
 import type { ScoreResult, Weights } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 const SiteMap = dynamic(() => import("@/components/site-map"), {
   ssr: false,
@@ -59,6 +61,7 @@ export function AppShell() {
   // null = default: open when docked (wide screens), closed when it would float over the map.
   const [featuredPref, setFeaturedPref] = useState<boolean | null>(null)
   const featuredOpen = featuredPref ?? wide
+  const [rightTab, setRightTab] = useState<"listings" | "chat">("listings")
   const [panelOpen, setPanelOpen] = useState(true)
   const basemap: Basemap = basemapChoice ?? (theme === "light" ? "light" : "dark")
 
@@ -132,6 +135,7 @@ export function AppShell() {
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Corkathon 2026</p>
                     <div className="flex items-center gap-1">
+                      <SnowToggle />
                       <ThemeToggle theme={theme} onChange={changeTheme} />
                       <Button
                         variant="ghost"
@@ -229,7 +233,7 @@ export function AppShell() {
             onClick={() => setFeaturedPref(true)}
             className="absolute top-4 right-4 z-[1000] hidden bg-background/90 shadow-sm backdrop-blur md:inline-flex"
           >
-            <PanelRightOpen /> Featured listings
+            <PanelRightOpen /> {rightTab === "chat" ? "Chat" : "Featured listings"}
           </Button>
         )}
       </section>
@@ -244,16 +248,44 @@ export function AppShell() {
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             className="absolute top-3 right-3 bottom-3 z-[1001] hidden w-[320px] overflow-hidden rounded-2xl border bg-background/80 shadow-2xl backdrop-blur-xl md:block xl:w-[340px]"
           >
-            <FeaturedListings
-              weights={weights}
-              selectedId={shown?.plot?.listing?.id ?? null}
-              onSelect={onPick}
-              onClose={() => setFeaturedPref(false)}
-            />
+            <div className="flex h-full flex-col">
+              <header className="flex items-center justify-between gap-2 border-b px-3 py-2.5">
+                <div className="flex gap-1 rounded-lg bg-muted p-1">
+                  <button
+                    type="button"
+                    onClick={() => setRightTab("listings")}
+                    className={cn(
+                      "rounded-md px-3 py-1 text-xs font-medium transition-colors",
+                      rightTab === "listings" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    Listings
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRightTab("chat")}
+                    className={cn(
+                      "rounded-md px-3 py-1 text-xs font-medium transition-colors",
+                      rightTab === "chat" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    Chat
+                  </button>
+                </div>
+                <Button variant="ghost" size="icon-sm" onClick={() => setFeaturedPref(false)} aria-label="Hide panel">
+                  <PanelRightClose />
+                </Button>
+              </header>
+              <div className={cn("min-h-0 flex-1", rightTab !== "listings" && "hidden")}>
+                <FeaturedListings weights={weights} selectedId={shown?.plot?.listing?.id ?? null} onSelect={onPick} />
+              </div>
+              <div className={cn("min-h-0 flex-1", rightTab !== "chat" && "hidden")}>
+                <ChatPanel site={shown} onPlace={onPick} />
+              </div>
+            </div>
           </motion.aside>
         )}
       </AnimatePresence>
-      <ChatWidget site={shown} />
     </main>
   )
 }
