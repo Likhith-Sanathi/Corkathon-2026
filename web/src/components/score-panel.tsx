@@ -6,7 +6,7 @@ import { Building2, LandPlot, MapPin, ShieldAlert, Waves, X } from "lucide-react
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { FACTOR_COLORS } from "@/lib/layers"
-import { FACTOR_LABELS, grade } from "@/lib/scoring"
+import { FACTOR_LABELS, GRADE_HEX, grade, type Tone } from "@/lib/scoring"
 import type { PlotInfo, ScoreResult } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -16,8 +16,6 @@ const TONE: Record<string, string> = {
   fair: "text-amber-600 dark:text-amber-400",
   poor: "text-rose-600 dark:text-rose-400",
 }
-const RING: Record<string, string> = { great: "#10b981", good: "#84cc16", fair: "#f59e0b", poor: "#f43f5e" }
-
 function AnimatedNumber({ value, decimals = 0 }: { value: number; decimals?: number }) {
   const ref = useRef<HTMLSpanElement>(null)
   const last = useRef(0)
@@ -35,7 +33,7 @@ function AnimatedNumber({ value, decimals = 0 }: { value: number; decimals?: num
   return <span ref={ref}>{(0).toFixed(decimals)}</span>
 }
 
-function ScoreRing({ score, tone }: { score: number; tone: string }) {
+function ScoreRing({ score, tone }: { score: number; tone: Tone }) {
   const r = 42
   const c = 2 * Math.PI * r
   return (
@@ -48,7 +46,7 @@ function ScoreRing({ score, tone }: { score: number; tone: string }) {
         fill="none"
         strokeWidth="8"
         strokeLinecap="round"
-        stroke={RING[tone]}
+        stroke={GRADE_HEX[tone]}
         strokeDasharray={c}
         initial={{ strokeDashoffset: c }}
         animate={{ strokeDashoffset: c * (1 - score / 100) }}

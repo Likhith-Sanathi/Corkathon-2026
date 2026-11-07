@@ -164,6 +164,25 @@
 @media (prefers-reduced-motion: reduce) {
   .site-pin { animation: none; }
 }
+.search-pin {
+  display: flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 2px solid white;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.35);
+  font-size: 10px;
+  font-weight: 700;
+  color: white;
+  cursor: pointer;
+  animation: pin-drop 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.dark .search-pin { border-color: oklch(0.205 0 0); }
+@media (prefers-reduced-motion: reduce) {
+  .search-pin { animation: none; }
+}
 
 /* ---------- OLED: true-black surfaces (applied together with .dark) ---------- */
 .dark.oled {
