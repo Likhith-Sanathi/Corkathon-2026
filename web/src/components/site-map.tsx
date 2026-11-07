@@ -3,7 +3,20 @@
 import "leaflet/dist/leaflet.css"
 import L from "leaflet"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { GeoJSON, MapContainer, Marker, Pane, Polygon, Polyline, TileLayer, useMap, useMapEvents, WMSTileLayer, ZoomControl } from "react-leaflet"
+import {
+  GeoJSON,
+  MapContainer,
+  Marker,
+  Pane,
+  Polygon,
+  Polyline,
+  TileLayer,
+  Tooltip,
+  useMap,
+  useMapEvents,
+  WMSTileLayer,
+  ZoomControl,
+} from "react-leaflet"
 import {
   BASEMAPS,
   FACTOR_COLORS,
@@ -23,7 +36,7 @@ import {
 } from "@/lib/layers"
 import { GRID_NODATA, type GridMeta } from "@/lib/grid"
 import { loadSprites, type GlyphKind, type Sprites } from "@/lib/glyphs"
-import { normaliseWeights } from "@/lib/scoring"
+import { GRADE_HEX, grade, normaliseWeights } from "@/lib/scoring"
 import type { Theme } from "@/lib/theme"
 import type {
   BusinessPark,
@@ -166,6 +179,21 @@ function FitToEvidence({ result }: { result: ScoreResult | null }) {
     for (const p of result.points) bounds.extend([p.lat, p.lon])
     map.flyToBounds(bounds.pad(0.25), { maxZoom: 12, duration: 0.8 })
   }, [map, result])
+  return null
+}
+
+/** Pans/zooms to fit every search result when a new search completes (same site list: keep the view). */
+function FitToSearch({ sites }: { sites: ScoreResult[] }) {
+  const map = useMap()
+  const lastKey = useRef<string>("")
+  useEffect(() => {
+    if (!sites.length) return
+    const key = sites.map((s) => `${s.lat},${s.lon}`).join("|")
+    if (key === lastKey.current) return
+    lastKey.current = key
+    const bounds = L.latLngBounds(sites.map((s) => [s.lat, s.lon] as [number, number]))
+    map.flyToBounds(bounds.pad(0.2), { maxZoom: 12, duration: 0.8 })
+  }, [map, sites])
   return null
 }
 
@@ -399,6 +427,16 @@ const pinIcon = L.divIcon({
   iconAnchor: [14, 28],
 })
 
+/** Small numbered badge for a search result, colour-coded by its grade. */
+function searchPinIcon(rank: number, color: string) {
+  return L.divIcon({
+    className: "",
+    html: `<div class="search-pin" style="background:${color}">${rank}</div>`,
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+  })
+}
+
 // ---------- component ----------
 export type SiteMapProps = {
   theme: Theme
@@ -409,10 +447,11 @@ export type SiteMapProps = {
   basemap: Basemap
   pin: { lat: number; lon: number } | null
   result: ScoreResult | null
+  searchSites: ScoreResult[]
   onPick: (lat: number, lon: number) => void
 }
 
-export default function SiteMap({ theme, weights, onHeatDomain, layers, filters, basemap, pin, result, onPick }: SiteMapProps) {
+export default function SiteMap({ theme, weights, onHeatDomain, layers, filters, basemap, pin, result, searchSites, onPick }: SiteMapProps) {
   const substations = useLayer<Substation[]>("substations", layers.substations)
   const lines = useLayer<PowerLine[]>("lines", layers.hv)
   const towers = useLayer<Tower[]>("towers", layers.hv)
@@ -601,6 +640,7 @@ export default function SiteMap({ theme, weights, onHeatDomain, layers, filters,
       <ZoomControl position="bottomright" />
       <ClickToPin onPick={onPick} />
       <FitToEvidence result={result} />
+      <FitToSearch sites={searchSites} />
 
       {municipalities && (
         <GeoJSON
@@ -666,6 +706,23 @@ export default function SiteMap({ theme, weights, onHeatDomain, layers, filters,
           />
         ))}
       {pin && <Marker position={[pin.lat, pin.lon]} icon={pinIcon} />}
+
+      {searchSites.map((s, i) => (
+        <Marker
+          key={`search-${s.lat}-${s.lon}`}
+          position={[s.lat, s.lon]}
+          icon={searchPinIcon(i + 1, GRADE_HEX[grade(s.score).tone])}
+          eventHandlers={{ click: () => onPick(s.lat, s.lon) }}
+        >
+          <Tooltip direction="top" offset={[0, -6]}>
+            <b>
+              #{i + 1} · {s.score.toFixed(0)}/100
+            </b>
+            <br />
+            {s.lat.toFixed(4)}, {s.lon.toFixed(4)}
+          </Tooltip>
+        </Marker>
+      ))}
     </MapContainer>
   )
 }

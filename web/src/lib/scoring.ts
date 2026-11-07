@@ -237,7 +237,17 @@ export function scoreAt(
   }
 }
 
-export function grade(score: number): { label: string; tone: "great" | "good" | "fair" | "poor" } {
+export type Tone = "great" | "good" | "fair" | "poor"
+
+/** Hex colours for each grade tone, shared by the score ring, map pins and ranked tables. */
+export const GRADE_HEX: Record<Tone, string> = {
+  great: "#10b981",
+  good: "#84cc16",
+  fair: "#f59e0b",
+  poor: "#f43f5e",
+}
+
+export function grade(score: number): { label: string; tone: Tone } {
   if (score >= 70) return { label: "Excellent site", tone: "great" }
   if (score >= 50) return { label: "Good site", tone: "good" }
   if (score >= 30) return { label: "Fair site", tone: "fair" }
