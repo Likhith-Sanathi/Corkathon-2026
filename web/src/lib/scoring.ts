@@ -76,6 +76,7 @@ export function locate(data: Dataset, lat: number, lon: number) {
   return null
 }
 
+/** Score a point in the Netherlands, or return null when it is outside the country. */
 export function scoreLocation(
   data: Dataset,
   lat: number,
@@ -83,7 +84,17 @@ export function scoreLocation(
   weightsIn: Weights = DEFAULT_WEIGHTS,
 ): ScoreResult | null {
   const where = locate(data, lat, lon)
-  if (!where) return null
+  return where ? scoreAt(data, lat, lon, weightsIn, where) : null
+}
+
+/** Score a point without the municipality lookup (the caller has already checked it is in the Netherlands). */
+export function scoreAt(
+  data: Dataset,
+  lat: number,
+  lon: number,
+  weightsIn: Weights = DEFAULT_WEIGHTS,
+  where: { name: string; province: string } = { name: "", province: "" },
+): ScoreResult {
   const weights = normaliseWeights(weightsIn)
   const points: EvidencePoint[] = []
   const factors: FactorResult[] = []

@@ -11,8 +11,11 @@ python3 scripts/build_data.py
 # then the app
 cd web
 npm install
+npm run build:grid # precompute the score heatmap (after build_data.py, ~15 s)
 npm run dev        # http://localhost:3000
 ```
+
+The **site score heatmap** comes from `scripts/build-grid.ts`. It scores every ~1 km cell in the Netherlands with the same `scoreAt` function the API uses, and stores the five factor scores and the risk multiplier per cell (`public/data/grid.bin`, ~0.5 MB). The browser combines them with the current weights, so the heatmap recolours live (about 50 ms) as the sliders move. Colours stretch over the 2nd–98th percentile of the current scores; the legend shows the actual range.
 
 `scripts/build_data.py` reads `power.csv`, `water.csv`, `roads.csv`, `isolation.csv`, `telecom.csv`, `seismic.csv` and `flood.csv` from the repo root and writes compact JSON layers to `web/public/data/`. It also downloads the municipality boundaries from PDOK once (cached in `scripts/.cache/`), which the app uses to check that a pin is inside the Netherlands.
 

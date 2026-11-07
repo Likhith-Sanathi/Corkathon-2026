@@ -1,6 +1,7 @@
 "use client"
 
 import { Moon, MoonStar, RotateCcw, Sun } from "lucide-react"
+import { GlyphIcon } from "@/components/glyph-icon"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
@@ -8,6 +9,7 @@ import { Switch } from "@/components/ui/switch"
 import {
   BASEMAPS,
   FACTOR_COLORS,
+  HEAT_RAMP,
   LAYERS,
   type Basemap,
   type Filters,
@@ -92,22 +94,29 @@ export function LayerControls({
           <div key={l.key} className="space-y-1.5">
             <label className="flex cursor-pointer items-center justify-between gap-3">
               <span className="flex min-w-0 items-center gap-2.5 text-sm">
-                <span className="size-2.5 shrink-0 rounded-full" style={{ background: l.color }} />
+                {l.icon ? (
+                  <GlyphIcon kind={l.icon} size={14} />
+                ) : l.key === "heatmap" ? (
+                  <span className="h-2.5 w-3.5 shrink-0 rounded-sm" style={{ background: `linear-gradient(90deg, ${HEAT_RAMP.join(", ")})` }} />
+                ) : (
+                  <span className="flex w-3.5 shrink-0 justify-center">
+                    <span className="size-2.5 rounded-full" style={{ background: l.color }} />
+                  </span>
+                )}
                 <span className="truncate">{l.label}</span>
                 <span className="shrink-0 text-xs text-muted-foreground">{l.hint}</span>
               </span>
               <Switch checked={layers[l.key]} onCheckedChange={(on) => onToggle(l.key, on)} />
             </label>
             {l.legend && layers[l.key] && (
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-5 text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 pl-6 text-xs text-muted-foreground">
                 {l.legend.map((item) => (
                   <span key={item.label} className="flex items-center gap-1.5">
-                    <span className="flex w-2.5 justify-center">
-                      <span
-                        className="shrink-0 rounded-full"
-                        style={{ width: item.size ?? 8, height: item.size ?? 8, background: item.color }}
-                      />
-                    </span>
+                    {item.glyph ? (
+                      <GlyphIcon kind={item.glyph} size={13} />
+                    ) : (
+                      <span className="size-2 rounded-full" style={{ background: item.color }} />
+                    )}
                     {item.label}
                   </span>
                 ))}

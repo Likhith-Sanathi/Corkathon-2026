@@ -1,6 +1,8 @@
+import type { GlyphKind } from "./glyphs"
 import type { FactorKey } from "./types"
 
 export type LayerKey =
+  | "heatmap"
   | "flood"
   | "substations"
   | "hv"
@@ -18,8 +20,10 @@ export type LayerDef = {
   color: string
   files: string[]
   defaultOn: boolean
-  /** Sub-categories shown under the toggle; size is a dot diameter in px. */
-  legend?: { color: string; label: string; size?: number; hollow?: boolean }[]
+  /** Map glyph shown next to the toggle instead of a colour dot. */
+  icon?: GlyphKind
+  /** Sub-categories shown under the toggle, as a map glyph or a colour swatch. */
+  legend?: { label: string; glyph?: GlyphKind; color?: string }[]
 }
 
 export const POWER_380 = "#dc2626"
@@ -27,7 +31,18 @@ export const POWER_HV = "#f59e0b"
 export const FLOOD_COLORS: Record<string, string> = { B: "#7dd3fc", D: "#3b82f6" }
 export const FLOOD_FALLBACK = "#a5b4fc"
 
+/** Viridis: perceptually even and colour-blind safe, readable on light and dark basemaps. */
+export const HEAT_RAMP = ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"]
+
 export const LAYERS: LayerDef[] = [
+  {
+    key: "heatmap",
+    label: "Site score heatmap",
+    hint: "~1 km grid",
+    color: "#21918c",
+    files: ["grid"],
+    defaultOn: true,
+  },
   {
     key: "substations",
     label: "Substations ≥110 kV",
@@ -35,9 +50,10 @@ export const LAYERS: LayerDef[] = [
     color: POWER_HV,
     files: ["substations"],
     defaultOn: true,
+    icon: "sub380",
     legend: [
-      { color: POWER_380, label: "380 kV", size: 10 },
-      { color: POWER_HV, label: "110–220 kV", size: 7 },
+      { glyph: "sub380", label: "380 kV" },
+      { glyph: "sub", label: "110–220 kV" },
     ],
   },
   { key: "hv", label: "HV lines & pylons", hint: "power.csv", color: "#fbbf24", files: ["lines", "towers"], defaultOn: false },
@@ -48,13 +64,14 @@ export const LAYERS: LayerDef[] = [
     color: "#10b981",
     files: ["telecom"],
     defaultOn: true,
+    icon: "dc",
     legend: [
-      { color: "#10b981", label: "Data centre", size: 10 },
-      { color: "#10b981", label: "Exchange", size: 5 },
+      { glyph: "dc", label: "Data centre" },
+      { glyph: "exchange", label: "Exchange" },
     ],
   },
   { key: "water", label: "Rivers, canals & lakes", hint: "water.csv", color: "#0ea5e9", files: ["water"], defaultOn: false },
-  { key: "junctions", label: "Motorway junctions", hint: "roads.csv", color: "#8b5cf6", files: ["junctions"], defaultOn: false },
+  { key: "junctions", label: "Motorway junctions", hint: "roads.csv", color: "#7c3aed", files: ["junctions"], defaultOn: false, icon: "junction" },
   { key: "places", label: "Settlements", hint: "isolation.csv", color: "#64748b", files: ["places"], defaultOn: false },
   {
     key: "flood",

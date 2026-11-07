@@ -9,6 +9,7 @@ import {
   FACTOR_COLORS,
   FLOOD_COLORS,
   FLOOD_FALLBACK,
+  HEAT_RAMP,
   PLACE_RANK,
   POWER_380,
   POWER_HV,
@@ -16,6 +17,9 @@ import {
   type Filters,
   type LayerKey,
 } from "@/lib/layers"
+import { GRID_NODATA, type GridMeta } from "@/lib/grid"
+import { loadSprites, type GlyphKind, type Sprites } from "@/lib/glyphs"
+import { normaliseWeights } from "@/lib/scoring"
 import type { Theme } from "@/lib/theme"
 import type {
   FeatureCollection,
@@ -30,6 +34,7 @@ import type {
   TelecomSite,
   Tower,
   WaterFeature,
+  Weights,
 } from "@/lib/types"
 
 const NL_CENTER: [number, number] = [52.2, 5.3]
@@ -56,7 +61,30 @@ function useLayer<T>(name: string, enabled: boolean): T | null {
 
 // ---------- canvas point layer ----------
 type Pt = { lat: number; lon: number }
-type PointStyle = L.CircleMarkerOptions | null
+type GlyphOptions = L.CircleMarkerOptions & { sprite?: HTMLImageElement; dotSprite?: HTMLImageElement }
+type PointStyle = GlyphOptions | null
+
+/** Below this drawn size (px) a glyph's icon is unreadable, so draw its plain-dot version. */
+const GLYPH_DETAIL_PX = 22
+
+/**
+ * A canvas circle marker that draws a sprite instead of a circle. It keeps the circle's hit area,
+ * so hover tooltips, zoom animation and batching from Leaflet's canvas renderer all still work.
+ */
+const GlyphMarker = L.CircleMarker.extend({
+  _updatePath(this: {
+    _renderer: { _drawing: boolean; _ctx: CanvasRenderingContext2D }
+    _point: L.Point
+    _radius: number
+    _empty: () => boolean
+    options: GlyphOptions
+  }) {
+    if (!this._renderer._drawing || this._empty()) return
+    const d = this._radius * 2
+    const img = d < GLYPH_DETAIL_PX && this.options.dotSprite ? this.options.dotSprite : this.options.sprite!
+    this._renderer._ctx.drawImage(img, this._point.x - d / 2, this._point.y - d / 2, d, d)
+  },
+}) as unknown as new (latlng: L.LatLngExpression, options: GlyphOptions) => L.CircleMarker
 /** Marker size multiplier: about half size at country zoom, full size from street level. */
 const zoomScale = (z: number) => Math.min(1.15, Math.max(0.5, 0.5 + (z - 7) * 0.15))
 
@@ -82,7 +110,8 @@ function PointLayer<T extends Pt>({
       const style = styleFor(it)
       if (!style) continue
       const base = style.radius ?? 4
-      const marker = L.circleMarker([it.lat, it.lon], { renderer, ...style, radius: base * zoomScale(map.getZoom()) })
+      const opts = { renderer, ...style, radius: base * zoomScale(map.getZoom()) }
+      const marker = style.sprite ? new GlyphMarker([it.lat, it.lon], opts) : L.circleMarker([it.lat, it.lon], opts)
       const tip = tooltipFor?.(it)
       if (tip) marker.bindTooltip(tip, { direction: "top", offset: [0, -4] })
       group.addLayer(marker)
@@ -130,6 +159,119 @@ function FitToEvidence({ result }: { result: ScoreResult | null }) {
   return null
 }
 
+// ---------- live score heatmap ----------
+type Grid = { meta: GridMeta; bytes: Uint8Array }
+let gridPromise: Promise<Grid> | null = null
+const loadGrid = () =>
+  (gridPromise ??= Promise.all([
+    fetch("/data/grid.json").then((r) => r.json() as Promise<GridMeta>),
+    fetch("/data/grid.bin").then((r) => r.arrayBuffer()),
+  ]).then(([meta, buf]) => ({ meta, bytes: new Uint8Array(buf) })))
+
+const RAMP_RGB = HEAT_RAMP.map((h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)))
+function rampColor(t: number): number[] {
+  const x = Math.max(0, Math.min(1, t)) * (RAMP_RGB.length - 1)
+  const i = Math.min(RAMP_RGB.length - 2, Math.floor(x))
+  const f = x - i
+  return RAMP_RGB[i].map((a, k) => Math.round(a + (RAMP_RGB[i + 1][k] - a) * f))
+}
+const mercY = (lat: number) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360))
+const fromMercY = (y: number) => ((2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180) / Math.PI
+
+/**
+ * Combines the precomputed factor scores with the current weights and paints the result as an
+ * image overlay. Re-runs on every weight change, which is cheap (one pass over ~77k cells).
+ */
+function ScoreHeatmap({ weights, onDomain }: { weights: Weights; onDomain: (d: [number, number] | null) => void }) {
+  const map = useMap()
+  const [grid, setGrid] = useState<Grid | null>(null)
+  const overlay = useRef<L.ImageOverlay | null>(null)
+
+  useEffect(() => {
+    let live = true
+    loadGrid().then((g) => live && setGrid(g))
+    return () => {
+      live = false
+    }
+  }, [])
+
+  // Create the overlay once the grid is known; remove it when the layer is switched off.
+  useEffect(() => {
+    if (!grid) return
+    if (!map.getPane("score-heat")) map.createPane("score-heat").style.zIndex = "340"
+    const { meta } = grid
+    const bounds = L.latLngBounds([meta.north - meta.rows * meta.dLat, meta.west], [meta.north, meta.west + meta.cols * meta.dLon])
+    const ov = L.imageOverlay("data:,", bounds, { pane: "score-heat", opacity: 0.72, interactive: false }).addTo(map)
+    overlay.current = ov
+    return () => {
+      ov.remove()
+      overlay.current = null
+      onDomain(null)
+    }
+  }, [grid, map, onDomain])
+
+  // Recolour whenever the weights change.
+  useEffect(() => {
+    if (!grid || !overlay.current) return
+    const { meta, bytes } = grid
+    const nf = meta.fields.length
+    const w = normaliseWeights(weights)
+    const terms = meta.fields.flatMap((f, i) => (f in w ? [[i, w[f as keyof Weights]] as const] : []))
+    const riskIdx = meta.fields.indexOf("risk")
+
+    const n = meta.cols * meta.rows
+    const scores = new Float32Array(n)
+    const valid: number[] = []
+    for (let i = 0; i < n; i++) {
+      const o = i * nf
+      if (bytes[o] === GRID_NODATA) {
+        scores[i] = NaN
+        continue
+      }
+      let s = 0
+      for (const [k, wk] of terms) s += wk * bytes[o + k]
+      const v = (100 * s * bytes[o + riskIdx]) / (254 * 254)
+      scores[i] = v
+      valid.push(v)
+    }
+    // Stretch the colours over the 2nd–98th percentile so the gradient uses its full range.
+    valid.sort((a, b) => a - b)
+    const lo = valid[Math.floor(valid.length * 0.02)]
+    const hi = valid[Math.floor(valid.length * 0.98)]
+    const span = hi - lo || 1
+
+    // Resample rows into Web Mercator so the overlay lines up with the basemap.
+    const W = meta.cols
+    const H = meta.rows * 2
+    const yN = mercY(meta.north)
+    const yS = mercY(meta.north - meta.rows * meta.dLat)
+    const canvas = document.createElement("canvas")
+    canvas.width = W
+    canvas.height = H
+    const ctx = canvas.getContext("2d")!
+    const img = ctx.createImageData(W, H)
+    for (let j = 0; j < H; j++) {
+      const lat = fromMercY(yN + ((yS - yN) * (j + 0.5)) / H)
+      const r = Math.min(meta.rows - 1, Math.max(0, Math.floor((meta.north - lat) / meta.dLat)))
+      for (let c = 0; c < W; c++) {
+        const v = scores[r * W + c]
+        const p = (j * W + c) * 4
+        if (Number.isNaN(v)) continue // stays transparent
+        const [R, G, B] = rampColor((v - lo) / span)
+        img.data[p] = R
+        img.data[p + 1] = G
+        img.data[p + 2] = B
+        img.data[p + 3] = 255
+      }
+    }
+    ctx.putImageData(img, 0, 0)
+    overlay.current.setUrl(canvas.toDataURL())
+    onDomain([lo, hi])
+  }, [grid, weights, onDomain])
+
+  return null
+}
+
 // ---------- dim everything outside the Netherlands ----------
 type Outline = { geometry: { coordinates: [number, number][][][] } }
 const WORLD: [number, number][] = [
@@ -166,8 +308,6 @@ function OutsideMask({ theme }: { theme: Theme }) {
   )
 }
 
-const MARKER_RING: Record<Theme, string> = { light: "#ffffff", dark: "#1f1f22", oled: "#000000" }
-
 const pinIcon = L.divIcon({
   className: "",
   html: '<div class="site-pin"><span></span></div>',
@@ -178,6 +318,8 @@ const pinIcon = L.divIcon({
 // ---------- component ----------
 export type SiteMapProps = {
   theme: Theme
+  weights: Weights
+  onHeatDomain: (d: [number, number] | null) => void
   layers: Record<LayerKey, boolean>
   filters: Filters
   basemap: Basemap
@@ -186,7 +328,7 @@ export type SiteMapProps = {
   onPick: (lat: number, lon: number) => void
 }
 
-export default function SiteMap({ theme, layers, filters, basemap, pin, result, onPick }: SiteMapProps) {
+export default function SiteMap({ theme, weights, onHeatDomain, layers, filters, basemap, pin, result, onPick }: SiteMapProps) {
   const substations = useLayer<Substation[]>("substations", layers.substations)
   const lines = useLayer<PowerLine[]>("lines", layers.hv)
   const towers = useLayer<Tower[]>("towers", layers.hv)
@@ -198,40 +340,46 @@ export default function SiteMap({ theme, layers, filters, basemap, pin, result, 
   const flood = useLayer<FeatureCollection<FloodZone>>("flood", layers.flood)
   const municipalities = useLayer<FeatureCollection<Municipality>>("municipalities", layers.municipalities)
 
+  // Glyph sprites for the current theme (outline and shadow differ per theme).
+  const [spriteSet, setSpriteSet] = useState<{ theme: Theme; sprites: Sprites } | null>(null)
+  useEffect(() => {
+    let live = true
+    loadSprites(theme).then((sprites) => live && setSpriteSet({ theme, sprites }))
+    return () => {
+      live = false
+    }
+  }, [theme])
+  const sprites = spriteSet?.theme === theme ? spriteSet.sprites : null
+  const glyph = useCallback(
+    (kind: GlyphKind, radius: number): PointStyle =>
+      sprites ? { radius, sprite: sprites[kind].full, dotSprite: sprites[kind].dot } : null,
+    [sprites],
+  )
+
   const minKv = Number(filters.voltage)
-  // Marker outline matches the map background, so markers read as cut-outs in every theme.
-  const ring = MARKER_RING[theme]
-  const placeFill = theme === "light" ? "#475569" : "#a1a1aa"
+  const placeFill = theme === "light" ? "#334155" : "#e4e4e7"
 
   const substationStyle = useCallback(
-    (s: Substation): PointStyle =>
-      s.kv < minKv
-        ? null
-        : s.kv >= 380
-          ? { radius: 6.5, color: ring, weight: 1.5, fillColor: POWER_380, fillOpacity: 1 }
-          : { radius: 4, color: ring, weight: 1, fillColor: POWER_HV, fillOpacity: 0.95 },
-    [minKv, ring],
+    (s: Substation): PointStyle => (s.kv < minKv ? null : s.kv >= 380 ? glyph("sub380", 15) : glyph("sub", 12)),
+    [minKv, glyph],
   )
   const substationTip = useCallback((s: Substation) => titled(s.name, `${s.kv} kV substation`), [])
 
   const lineStyle = useCallback(
     (l: PowerLine): PointStyle =>
-      l.kv < minKv ? null : { radius: 3, stroke: false, fillColor: l.kv >= 380 ? POWER_380 : "#fbbf24", fillOpacity: 0.9 },
+      l.kv < minKv ? null : { radius: 2.4, stroke: false, fillColor: l.kv >= 380 ? POWER_380 : POWER_HV, fillOpacity: 0.85 },
     [minKv],
   )
   const lineTip = useCallback((l: PowerLine) => titled(l.name, `${l.kv} kV line`), [])
   // Pylons carry no voltage tag, so they only show when the filter allows 110 kV+.
   const towerStyle = useCallback(
-    (): PointStyle => (minKv > 110 ? null : { radius: 1.5, stroke: false, fillColor: "#d97706", fillOpacity: 0.6 }),
+    (): PointStyle => (minKv > 110 ? null : { radius: 1.4, stroke: false, fillColor: POWER_HV, fillOpacity: 0.55 }),
     [minKv],
   )
 
   const telecomStyle = useCallback(
-    (t: TelecomSite): PointStyle =>
-      t.type === "data_center"
-        ? { radius: 6.5, color: ring, weight: 1.5, fillColor: theme === "light" ? "#059669" : "#34d399", fillOpacity: 1 }
-        : { radius: 3, color: ring, weight: 1, fillColor: theme === "light" ? "#6ee7b7" : "#10b981", fillOpacity: theme === "light" ? 0.9 : 0.55 },
-    [ring, theme],
+    (t: TelecomSite): PointStyle => (t.type === "data_center" ? glyph("dc", 15) : glyph("exchange", 9)),
+    [glyph],
   )
   const telecomTip = useCallback(
     (t: TelecomSite) => titled(t.name, t.type === "data_center" ? "Data centre" : "Telecom exchange"),
@@ -239,17 +387,19 @@ export default function SiteMap({ theme, layers, filters, basemap, pin, result, 
   )
 
   const waterStyle = useCallback(
-    (w: WaterFeature): PointStyle => ({ radius: w.type === "lake" || w.type === "reservoir" ? 3 : 1.6, stroke: false, fillColor: "#0ea5e9", fillOpacity: 0.55 }),
+    (w: WaterFeature): PointStyle => ({ radius: w.type === "lake" || w.type === "reservoir" ? 2.6 : 1.5, stroke: false, fillColor: "#38bdf8", fillOpacity: 0.7 }),
     [],
   )
-  const junctionStyle = useCallback((): PointStyle => ({ radius: 3.5, color: ring, weight: 1, fillColor: "#8b5cf6", fillOpacity: 0.95 }), [ring])
+  const junctionStyle = useCallback((): PointStyle => glyph("junction", 7.5), [glyph])
   const junctionTip = useCallback((j: Junction) => titled(j.name, "Motorway junction"), [])
 
   const minRank = PLACE_RANK[filters.minPlace]
   const placeStyle = useCallback(
     (p: Place): PointStyle =>
-      PLACE_RANK[p.type] < minRank ? null : { radius: 2 + p.w * 7, color: ring, weight: 1, fillColor: placeFill, fillOpacity: 0.75 },
-    [minRank, ring, placeFill],
+      PLACE_RANK[p.type] < minRank
+        ? null
+        : { radius: 2.5 + p.w * 8, color: placeFill, weight: 1, opacity: 0.6, fillColor: placeFill, fillOpacity: 0.18 },
+    [minRank, placeFill],
   )
   const placeTip = useCallback((p: Place) => titled(p.name, p.type), [])
 
@@ -311,6 +461,7 @@ export default function SiteMap({ theme, layers, filters, basemap, pin, result, 
       className="h-full w-full"
     >
       <TileLayer key={basemap} url={tile.url} attribution={tile.attribution} maxNativeZoom={tile.maxNativeZoom} maxZoom={19} />
+      {layers.heatmap && <ScoreHeatmap weights={weights} onDomain={onHeatDomain} />}
       <OutsideMask theme={theme} />
       <ZoomControl position="bottomright" />
       <ClickToPin onPick={onPick} />
