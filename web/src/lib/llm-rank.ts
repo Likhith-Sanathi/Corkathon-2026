@@ -5,7 +5,34 @@ const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 // Cheap, fast OpenAI model via OpenRouter. Override with OPENROUTER_MODEL.
 const DEFAULT_MODEL = "openai/gpt-4o-mini"
 
-const SYSTEM_PROMPT = `You help decision-makers compare plots of land for sale as data centre sites in the Netherlands.
+export type ChatMessage = { role: "system" | "user" | "assistant"; content: string }
+
+/**
+ * Calls the one LLM this app uses everywhere (gpt-4o-mini via OpenRouter). Returns null (never
+ * throws past the caller) if no API key is configured or the call fails — every feature built on
+ * this degrades to "no AI answer" rather than breaking.
+ */
+export async function callOpenRouter(messages: ChatMessage[], temperature = 0.3): Promise<string | null> {
+  const apiKey = process.env.OPENROUTER_API_KEY
+  if (!apiKey) return null
+
+  try {
+    const res = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: process.env.OPENROUTER_MODEL ?? DEFAULT_MODEL, messages, temperature }),
+      signal: AbortSignal.timeout(20000),
+    })
+    if (!res.ok) return null
+
+    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] }
+    return data.choices?.[0]?.message?.content?.trim() ?? null
+  } catch {
+    return null
+  }
+}
+
+const RANKING_SYSTEM_PROMPT = `You help decision-makers compare plots of land for sale as data centre sites in the Netherlands.
 You will be given a list of candidate plots that have already been scored by a deterministic model
 (power grid access, isolation, telecom, water, roads, flood and seismic risk). Each plot also has a size,
 an asking price and the business park it is in. Your job is to write a short, plain-language comparison
@@ -25,8 +52,7 @@ Rules:
  * the deterministic ranking and scores still stand on their own without this.
  */
 export async function summariseRanking(query: string, sites: ScoreResult[]): Promise<string | null> {
-  const apiKey = process.env.OPENROUTER_API_KEY
-  if (!apiKey || sites.length === 0) return null
+  if (sites.length === 0) return null
 
   const payload = sites.map((s, i) => ({
     rank: i + 1,
@@ -46,25 +72,8 @@ export async function summariseRanking(query: string, sites: ScoreResult[]): Pro
     risks: s.risks.map((r) => ({ key: r.key, multiplier: r.multiplier, evidence: r.evidence })),
   }))
 
-  try {
-    const res = await fetch(OPENROUTER_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: process.env.OPENROUTER_MODEL ?? DEFAULT_MODEL,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: `Search: "${query}"\n\nRanked candidates (best first):\n${JSON.stringify(payload, null, 2)}` },
-        ],
-        temperature: 0.3,
-      }),
-      signal: AbortSignal.timeout(20000),
-    })
-    if (!res.ok) return null
-
-    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] }
-    return data.choices?.[0]?.message?.content?.trim() ?? null
-  } catch {
-    return null
-  }
+  return callOpenRouter([
+    { role: "system", content: RANKING_SYSTEM_PROMPT },
+    { role: "user", content: `Search: "${query}"\n\nRanked candidates (best first):\n${JSON.stringify(payload, null, 2)}` },
+  ])
 }

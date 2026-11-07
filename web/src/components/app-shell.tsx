@@ -5,6 +5,7 @@ import { ReactLenis } from "lenis/react"
 import { AnimatePresence, motion } from "motion/react"
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react"
 import { Loader2, PanelLeftClose, PanelLeftOpen, PanelRightOpen } from "lucide-react"
+import { ChatWidget } from "@/components/chat-widget"
 import { FilterControls, LayerControls, ThemeToggle, WeightControls } from "@/components/controls"
 import { FeaturedListings } from "@/components/featured-listings"
 import { Button } from "@/components/ui/button"
@@ -256,6 +257,7 @@ export function AppShell() {
           </motion.aside>
         )}
       </AnimatePresence>
+      <ChatWidget site={shown} />
     </main>
   )
 }
