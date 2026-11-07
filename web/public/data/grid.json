@@ -1,1 +1,1 @@
-{"west":3.3,"north":53.6,"dLon":0.015,"dLat":0.01,"cols":267,"rows":290,"fields":["power","isolation","telecom","water","roads","risk"],"cellsInside":36504,"builtAt":"2026-11-07T14:48:41.724Z"}
+{"west":3.3,"north":53.6,"dLon":0.0075,"dLat":0.005,"cols":533,"rows":580,"fields":["power","isolation","telecom","water","roads","risk"],"cellsInside":146027,"builtAt":"2026-11-07T15:02:58.193Z"}

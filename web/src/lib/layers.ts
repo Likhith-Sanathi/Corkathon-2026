@@ -38,7 +38,7 @@ export const LAYERS: LayerDef[] = [
   {
     key: "heatmap",
     label: "Site score heatmap",
-    hint: "~1 km grid",
+    hint: "~500 m grid",
     color: "#21918c",
     files: ["grid"],
     defaultOn: true,

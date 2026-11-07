@@ -1,14 +1,15 @@
 /**
- * Precompute the per-factor site scores on a ~1 km grid over the Netherlands.
+ * Precompute the per-factor site scores on a ~500 m grid over the Netherlands.
  *
  * Usage (from web/): npm run build:grid   (after `python3 ../scripts/build_data.py`)
- * Output: public/data/grid.json (metadata) + public/data/grid.bin (packed scores)
+ * Output: public/data/grid.json (metadata) + public/data/grid.bin.gz (packed scores, see src/lib/grid.ts)
  *
  * Only the factor scores and the risk multiplier are stored. The browser combines them
  * with the current weights, so the heatmap updates live without recomputing distances.
  */
-import { readFileSync, writeFileSync } from "node:fs"
+import { readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
+import { gzipSync } from "node:zlib"
 import { inPolygon } from "../src/lib/geo"
 import { GRID_FIELDS, GRID_NODATA, GRID_SPEC, type GridMeta } from "../src/lib/grid"
 import { scoreAt } from "../src/lib/scoring"
@@ -25,7 +26,8 @@ const { west, east, south, north, dLon, dLat } = GRID_SPEC
 const cols = Math.round((east - west) / dLon)
 const rows = Math.round((north - south) / dLat)
 const nf = GRID_FIELDS.length
-const bytes = new Uint8Array(cols * rows * nf).fill(GRID_NODATA)
+const n = cols * rows
+const bytes = new Uint8Array(n * nf).fill(GRID_NODATA) // planar: field k lives at [k*n, (k+1)*n)
 const enc = (v: number) => Math.round(Math.max(0, Math.min(1, v)) * 254)
 
 const t0 = performance.now()
@@ -37,9 +39,9 @@ for (let r = 0; r < rows; r++) {
     if (!outline.some((poly) => inPolygon(lon, lat, poly))) continue
     const res = scoreAt(data, lat, lon)
     const byKey = Object.fromEntries(res.factors.map((f) => [f.key, f.score]))
-    const o = (r * cols + c) * nf
-    GRID_FIELDS.forEach((field, i) => {
-      bytes[o + i] = enc(field === "risk" ? res.risk : byKey[field])
+    const cell = r * cols + c
+    GRID_FIELDS.forEach((field, k) => {
+      bytes[k * n + cell] = enc(field === "risk" ? res.risk : byKey[field])
     })
     inside++
   }
@@ -57,6 +59,10 @@ const meta: GridMeta = {
   cellsInside: inside,
   builtAt: new Date().toISOString(),
 }
-writeFileSync(path.join(DATA, "grid.bin"), bytes)
+const packed = gzipSync(bytes, { level: 9 })
+writeFileSync(path.join(DATA, "grid.bin.gz"), packed)
+rmSync(path.join(DATA, "grid.bin"), { force: true }) // older uncompressed format
 writeFileSync(path.join(DATA, "grid.json"), JSON.stringify(meta))
-console.log(`done: ${cols}×${rows} grid, ${inside} cells inside NL, ${(bytes.length / 1e6).toFixed(2)} MB, ${((performance.now() - t0) / 1000).toFixed(1)} s`)
+console.log(
+  `done: ${cols}×${rows} grid, ${inside} cells inside NL, ${(packed.length / 1e6).toFixed(2)} MB gzipped, ${((performance.now() - t0) / 1000).toFixed(1)} s`,
+)

@@ -165,27 +165,145 @@ let gridPromise: Promise<Grid> | null = null
 const loadGrid = () =>
   (gridPromise ??= Promise.all([
     fetch("/data/grid.json").then((r) => r.json() as Promise<GridMeta>),
-    fetch("/data/grid.bin").then((r) => r.arrayBuffer()),
+    fetch("/data/grid.bin.gz").then((r) => new Response(r.body!.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer()),
   ]).then(([meta, buf]) => ({ meta, bytes: new Uint8Array(buf) })))
 
-const RAMP_RGB = HEAT_RAMP.map((h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)))
-function rampColor(t: number): number[] {
-  const x = Math.max(0, Math.min(1, t)) * (RAMP_RGB.length - 1)
-  const i = Math.min(RAMP_RGB.length - 2, Math.floor(x))
-  const f = x - i
-  return RAMP_RGB[i].map((a, k) => Math.round(a + (RAMP_RGB[i + 1][k] - a) * f))
-}
+/** 256-step lookup table for the colour ramp: [r, g, b] × 256. */
+const RAMP_LUT = (() => {
+  const stops = HEAT_RAMP.map((h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)))
+  const lut = new Uint8ClampedArray(256 * 3)
+  for (let i = 0; i < 256; i++) {
+    const x = (i / 255) * (stops.length - 1)
+    const k = Math.min(stops.length - 2, Math.floor(x))
+    const f = x - k
+    for (let c = 0; c < 3; c++) lut[i * 3 + c] = stops[k][c] + (stops[k + 1][c] - stops[k][c]) * f
+  }
+  return lut
+})()
 const mercY = (lat: number) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360))
 const fromMercY = (y: number) => ((2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180) / Math.PI
 
+/** Output pixels per grid cell (horizontally). Scores are interpolated between cells. */
+const HEAT_OVERSAMPLE = 2
+
+/** An image overlay backed by a live <canvas>, so repaints skip PNG encoding entirely. */
+const CanvasOverlay = L.ImageOverlay.extend({
+  _initImage(this: { _url: HTMLCanvasElement; _image: HTMLCanvasElement; _zoomAnimated: boolean; options: L.ImageOverlayOptions }) {
+    const el = (this._image = this._url)
+    L.DomUtil.addClass(el, "leaflet-image-layer")
+    if (this._zoomAnimated) L.DomUtil.addClass(el, "leaflet-zoom-animated")
+    if (this.options.className) L.DomUtil.addClass(el, this.options.className)
+    el.onselectstart = L.Util.falseFn
+    el.onmousemove = L.Util.falseFn
+  },
+}) as unknown as new (canvas: HTMLCanvasElement, bounds: L.LatLngBounds, options: L.ImageOverlayOptions) => L.ImageOverlay
+
 /**
- * Combines the precomputed factor scores with the current weights and paints the result as an
- * image overlay. Re-runs on every weight change, which is cheap (one pass over ~77k cells).
+ * Combine the precomputed factor scores with the weights and paint them into `canvas`,
+ * bilinearly interpolating between cells in Web Mercator. Returns the colour range used.
  */
+function paintHeatmap(canvas: HTMLCanvasElement, { meta, bytes }: Grid, weights: Weights): [number, number] {
+  const { cols, rows, north, dLat, dLon } = meta
+  const n = cols * rows
+  const w = normaliseWeights(weights)
+  // Planar layout: field k occupies bytes [k*n, (k+1)*n).
+  const terms = meta.fields.flatMap((f, k) => (f in w ? [[k * n, w[f as keyof Weights]] as const] : []))
+  const riskOff = meta.fields.indexOf("risk") * n
+
+  // 1. Score every cell (NaN outside the Netherlands).
+  const scores = new Float32Array(n)
+  const valid = new Float32Array(meta.cellsInside)
+  let nv = 0
+  for (let i = 0; i < scores.length; i++) {
+    if (bytes[i] === GRID_NODATA) {
+      scores[i] = NaN
+      continue
+    }
+    let s = 0
+    for (const [off, wk] of terms) s += wk * bytes[off + i]
+    scores[i] = (100 * s * bytes[riskOff + i]) / (254 * 254)
+    if (nv < valid.length) valid[nv++] = scores[i]
+  }
+  // Stretch the colours over the 2nd–98th percentile so the gradient uses its full range.
+  const sorted = valid.subarray(0, nv).sort()
+  const lo = sorted[Math.floor(nv * 0.02)]
+  const hi = sorted[Math.floor(nv * 0.98)]
+  const scale = 255 / (hi - lo || 1)
+
+  // 2. Output size: square pixels in Web Mercator.
+  const yN = mercY(north)
+  const yS = mercY(north - rows * dLat)
+  const W = cols * HEAT_OVERSAMPLE
+  const H = Math.round((W * (yN - yS)) / ((cols * dLon * Math.PI) / 180))
+  if (canvas.width !== W || canvas.height !== H) {
+    canvas.width = W
+    canvas.height = H
+  }
+
+  // Precompute the source cell and blend weight for every output column and row.
+  const c0 = new Int32Array(W)
+  const fx = new Float32Array(W)
+  for (let i = 0; i < W; i++) {
+    const gx = ((i + 0.5) / W) * cols - 0.5
+    c0[i] = Math.floor(gx)
+    fx[i] = gx - c0[i]
+  }
+
+  // 3. Bilinear sample, ignoring cells outside the country (their weight fades the edge out).
+  const ctx = canvas.getContext("2d")!
+  const img = ctx.createImageData(W, H)
+  const px = img.data
+  const at = (r: number, c: number) => (r < 0 || r >= rows || c < 0 || c >= cols ? NaN : scores[r * cols + c])
+  for (let j = 0; j < H; j++) {
+    const lat = fromMercY(yN + ((yS - yN) * (j + 0.5)) / H)
+    const gy = (north - lat) / dLat - 0.5
+    const r0 = Math.floor(gy)
+    const fy = gy - r0
+    for (let i = 0; i < W; i++) {
+      const c = c0[i]
+      const ax = fx[i]
+      let acc = 0
+      let ws = 0
+      const v00 = at(r0, c), v01 = at(r0, c + 1), v10 = at(r0 + 1, c), v11 = at(r0 + 1, c + 1)
+      // NaN !== NaN, so `v === v` skips cells outside the country.
+      let q = (1 - ax) * (1 - fy)
+      if (v00 === v00) {
+        acc += q * v00
+        ws += q
+      }
+      q = ax * (1 - fy)
+      if (v01 === v01) {
+        acc += q * v01
+        ws += q
+      }
+      q = (1 - ax) * fy
+      if (v10 === v10) {
+        acc += q * v10
+        ws += q
+      }
+      q = ax * fy
+      if (v11 === v11) {
+        acc += q * v11
+        ws += q
+      }
+      if (ws < 0.02) continue // transparent
+      const t = Math.max(0, Math.min(255, Math.round((acc / ws - lo) * scale))) * 3
+      const p = (j * W + i) * 4
+      px[p] = RAMP_LUT[t]
+      px[p + 1] = RAMP_LUT[t + 1]
+      px[p + 2] = RAMP_LUT[t + 2]
+      px[p + 3] = Math.min(255, ws * 420)
+    }
+  }
+  ctx.putImageData(img, 0, 0)
+  return [lo, hi]
+}
+
+/** Live score heatmap. Repaints on the next animation frame after a weight change. */
 function ScoreHeatmap({ weights, onDomain }: { weights: Weights; onDomain: (d: [number, number] | null) => void }) {
   const map = useMap()
   const [grid, setGrid] = useState<Grid | null>(null)
-  const overlay = useRef<L.ImageOverlay | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
   useEffect(() => {
     let live = true
@@ -201,72 +319,22 @@ function ScoreHeatmap({ weights, onDomain }: { weights: Weights; onDomain: (d: [
     if (!map.getPane("score-heat")) map.createPane("score-heat").style.zIndex = "340"
     const { meta } = grid
     const bounds = L.latLngBounds([meta.north - meta.rows * meta.dLat, meta.west], [meta.north, meta.west + meta.cols * meta.dLon])
-    const ov = L.imageOverlay("data:,", bounds, { pane: "score-heat", opacity: 0.72, interactive: false }).addTo(map)
-    overlay.current = ov
+    const canvas = document.createElement("canvas")
+    canvasRef.current = canvas
+    const ov = new CanvasOverlay(canvas, bounds, { pane: "score-heat", opacity: 0.72, interactive: false }).addTo(map)
     return () => {
       ov.remove()
-      overlay.current = null
+      canvasRef.current = null
       onDomain(null)
     }
   }, [grid, map, onDomain])
 
-  // Recolour whenever the weights change.
+  // Repaint when the weights change; rapid slider moves collapse into one paint per frame.
   useEffect(() => {
-    if (!grid || !overlay.current) return
-    const { meta, bytes } = grid
-    const nf = meta.fields.length
-    const w = normaliseWeights(weights)
-    const terms = meta.fields.flatMap((f, i) => (f in w ? [[i, w[f as keyof Weights]] as const] : []))
-    const riskIdx = meta.fields.indexOf("risk")
-
-    const n = meta.cols * meta.rows
-    const scores = new Float32Array(n)
-    const valid: number[] = []
-    for (let i = 0; i < n; i++) {
-      const o = i * nf
-      if (bytes[o] === GRID_NODATA) {
-        scores[i] = NaN
-        continue
-      }
-      let s = 0
-      for (const [k, wk] of terms) s += wk * bytes[o + k]
-      const v = (100 * s * bytes[o + riskIdx]) / (254 * 254)
-      scores[i] = v
-      valid.push(v)
-    }
-    // Stretch the colours over the 2nd–98th percentile so the gradient uses its full range.
-    valid.sort((a, b) => a - b)
-    const lo = valid[Math.floor(valid.length * 0.02)]
-    const hi = valid[Math.floor(valid.length * 0.98)]
-    const span = hi - lo || 1
-
-    // Resample rows into Web Mercator so the overlay lines up with the basemap.
-    const W = meta.cols
-    const H = meta.rows * 2
-    const yN = mercY(meta.north)
-    const yS = mercY(meta.north - meta.rows * meta.dLat)
-    const canvas = document.createElement("canvas")
-    canvas.width = W
-    canvas.height = H
-    const ctx = canvas.getContext("2d")!
-    const img = ctx.createImageData(W, H)
-    for (let j = 0; j < H; j++) {
-      const lat = fromMercY(yN + ((yS - yN) * (j + 0.5)) / H)
-      const r = Math.min(meta.rows - 1, Math.max(0, Math.floor((meta.north - lat) / meta.dLat)))
-      for (let c = 0; c < W; c++) {
-        const v = scores[r * W + c]
-        const p = (j * W + c) * 4
-        if (Number.isNaN(v)) continue // stays transparent
-        const [R, G, B] = rampColor((v - lo) / span)
-        img.data[p] = R
-        img.data[p + 1] = G
-        img.data[p + 2] = B
-        img.data[p + 3] = 255
-      }
-    }
-    ctx.putImageData(img, 0, 0)
-    overlay.current.setUrl(canvas.toDataURL())
-    onDomain([lo, hi])
+    if (!grid || !canvasRef.current) return
+    const canvas = canvasRef.current
+    const frame = requestAnimationFrame(() => onDomain(paintHeatmap(canvas, grid, weights)))
+    return () => cancelAnimationFrame(frame)
   }, [grid, weights, onDomain])
 
   return null
