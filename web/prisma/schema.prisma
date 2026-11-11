@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum FactorKey {
+  power
+  isolation
+  telecom
+  water
+  roads
+}
+
+enum RiskKey {
+  flood
+  seismic
+}
+
+/// A candidate location that has been scored at least once.
+model Site {
+  id           String          @id @default(cuid())
+  lat          Float
+  lon          Float
+  municipality String
+  province     String
+  createdAt    DateTime        @default(now())
+  snapshots    ScoreSnapshot[]
+
+  @@index([lat, lon])
+  @@index([municipality])
+}
+
+/// One scoring run for a Site: score/suitability/risk + the weights used,
+/// plus the raw PlotInfo (PDOK-derived GIS data) as a single JSON blob.
+model ScoreSnapshot {
+  id          String   @id @default(cuid())
+  siteId      String
+  site        Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  score       Float
+  suitability Float
+  risk        Float
+  weights     Json
+  plot        Json?
+  createdAt   DateTime @default(now())
+
+  factors        FactorScore[]
+  risks          RiskScore[]
+  evidencePoints EvidencePoint[]
+
+  @@index([siteId])
+  @@index([createdAt])
+}
+
+/// FactorResult row: one factor's contribution to a snapshot.
+model FactorScore {
+  id         String        @id @default(cuid())
+  snapshotId String
+  snapshot   ScoreSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  key        FactorKey
+  score      Float
+  weight     Float
+  evidence   String[]
+
+  @@unique([snapshotId, key])
+  @@index([snapshotId])
+}
+
+/// RiskResult row: one risk's contribution to a snapshot.
+model RiskScore {
+  id         String        @id @default(cuid())
+  snapshotId String
+  snapshot   ScoreSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  key        RiskKey
+  multiplier Float
+  evidence   String[]
+
+  @@unique([snapshotId, key])
+  @@index([snapshotId])
+}
+
+/// EvidencePoint: a mappable point (lat/lon/label/factor) backing a score.
+model EvidencePoint {
+  id         String        @id @default(cuid())
+  snapshotId String
+  snapshot   ScoreSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  lat        Float
+  lon        Float
+  label      String
+  factor     FactorKey
+
+  @@index([snapshotId])
+}
